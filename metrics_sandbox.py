@@ -24,25 +24,12 @@ SOFTWARE_VERSION = "0.0.0"
 # add UTCI cold
 # TNXp might not be the best metric because if days > 3 thats normal for the 90th percentile value. no level relevance. it should exceed the relative number of days of each percentile right? maybe do it that way. or drop the metric
 # add metadata to levels and what not 
-# add FWI
-# finish vibrio calc with mask
 #maybe restrict to no antarctica. add option to override. 
 # in preprocess, if tsteps > 365 then resample and mean (most vars) sum for accum (precip)
 # TNXp and R1day indices - need to be > # days percentile 
 # R5day check this, but I think don't need minimum days because already 5-day annual max, so if 5-day exceeds its already exceeding 3 days. 
-# fwi values kinda high in calculation 
 # masks needed
-#1. 1x1 grid atmos
-#2. 1x1 grid ocean
-#3  1x1 global DONE
-#3. ndvi DONE
-#-MODIS NDVI 0.05 regridded to 1x1 (https://www.earthdata.nasa.gov/data/catalog/lpcloud-mod13c2-061)
-#2010-2014, average climatolgy NDVI DONE
-#at least two consecutive months of NDVI above 0.125 (Ryan et al 2015; https://doi.org/10.1089/vbz.2015.1822)
-#4. fwi - need to get genZ environmental zone and map thresholds to 
-# ## Kudláčková et al 2024 https://iopscience.iop.org/article/10.1088/1748-9326/ad97cf#erlad97cffA1 
-# ## Metzger 2013 is the dataset https://onlinelibrary.wiley.com/doi/epdf/10.1111/geb.12022?src=getftr&utm_source=iopp&getft_integrator=iopp
-#5. land only. maybebathymetry based land mask. > 10% land included?
+#2. 1x1 grid ocean 
 # maybe add an fwi option to just have 4 levels as fallback 
 # # vibrio - models will have different topo. for now, just regrid to 1x1 and use coastal mask
         # Vibrio suitability is coastal, so regrid to get all the models on the same page
@@ -52,6 +39,8 @@ SOFTWARE_VERSION = "0.0.0"
 # say that gchi does not yet support ozone level slicing. inputs should be surface level
 # for fwi, see if want to keep as is with envrionemtnal zones read-in then thresholds calc, or just pull thresholds file (preferred)
 # for fwi, give option to overwrite with plain threshols like in ozone
+# the prep messes up units attr. 
+
 # =================
 # !! THRESHOLDS DICTIONARY !!
 # =================
@@ -2143,10 +2132,8 @@ def FWI(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, environ
     bui = template.copy()
     fwi = template.copy()
 
-    # Time loop (still needed due to sequential dependency)
-    # But each iteration processes all other dimensions at once!
     n_times = len(TX.time)
-    print(f"Processing {n_times} time steps (all dimensions vectorized)...")
+    print(f"Processing {n_times} time steps...")
     
     for i in range(n_times):
         if i % 365 == 0:
@@ -2436,12 +2423,12 @@ def CDD(ds_dict, hazard_thresholds=hazard_thresholds["CDD"], min_threshold=10):
     Maximum number of consecutive days with precipitation < 1mm.
     Only count dry spells of at least X days (10 is default) to account for health-relevant dry spells
     """
-    ds_dict['pr']
+    PR = ds_dict['pr']
     PR = _check_and_convert_units(da=PR, input_var="pr", conv_type="mm day-1") 
     
     # Count annual days in dry spells greater than X days     
     # boolean mask of dry days
-    dry_mask = PR < 1  # true where precipitation < 1mm
+    dry_mask = (PR < 1)  # true where precipitation < 1mm
 
     # rolling sum over X days, not centered (each day is start of 10-day window)
     # then count the windows where all X are dry 
@@ -2457,6 +2444,8 @@ def CDD(ds_dict, hazard_thresholds=hazard_thresholds["CDD"], min_threshold=10):
     CDD = PR.where(mask_expanded).resample(time="1YE").count()
 
     # count number of days per year that are part of a CDD
+    # get number of time steps in a year
+    steps_per_year = _get_tsteps(PR)
     CDD = _ann_frac(CDD, steps_per_year).rename("CDD")
     CDD = _assign_hazard_level(CDD, frac_thresholds=hazard_thresholds)
     
@@ -2743,7 +2732,7 @@ def PRXmm(ds_dict, hazard_thresholds=hazard_thresholds["PRXmm"]):
     PR = _check_and_convert_units(da=PR, input_var="pr", conv_type="mm day-1") 
     
     # Count days > X mm
-    PRXmm_levels = _annual_exceedance_frac(PRXmm, hazard_thresholds=hazard_thresholds, var_name="PRXmm")
+    PRXmm_levels = _annual_exceedance_frac(PR, hazard_thresholds=hazard_thresholds, var_name="PRXmm")
     PRXmm_levels = _assign_hazard_level(PRXmm_levels)
     
     return PRXmm_levels
