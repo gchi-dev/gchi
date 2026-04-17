@@ -272,6 +272,11 @@ def _ann_frac(da, steps_per_year):
     return da.groupby('time.year') / steps_per_year
 
 
+def _nan_mask(da):
+    """True where ALL timesteps in a year are NaN — used to restore NaNs after resample"""
+    return da.isnull().resample(time='1YE').all(dim='time')
+
+
 def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="above"):
     """
     Count annual days exceeding each threshold, return as fraction of year.
@@ -301,7 +306,9 @@ def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="abo
             return None
         da_list.append(da_count)
 
+    nan_mask = _nan_mask(da)
     da_exceed = xr.concat(da_list, dim='level')
+    da_exceed = da_exceed.where(~nan_mask)  # restore NaNs lost in resample
     da_exceed = da_exceed.assign_coords(level=np.arange(1, len(thresholds) + 1))
     da_exceed.attrs['level_values'] = thresholds.tolist()
     da_exceed = _ann_frac(da_exceed, steps_per_year).rename(var_name)
@@ -325,7 +332,7 @@ def _annual_exceedance_frac_aq(da, hazard_thresholds, var_name, exceedance_dir="
 
     steps_per_year = _get_tsteps(da)
     da_annual_mean = da.resample(time='1YE').mean(dim='time')
-    all_nan_mask = da.isnull().resample(time='1YE').all(dim='time')
+    all_nan_mask = _nan_mask(da)
 
     da_list = []
     for th in thresholds:
@@ -381,7 +388,9 @@ def _annual_exceedance_frac_fwi(da_fwi, da_zones, fwi_thresholds, var_name='FWI'
         da_count = (da_fwi > th).resample(time='1YE').sum('time')
         da_list.append(da_count)
 
+    nan_mask = _nan_mask(da_fwi)
     da_exceed = xr.concat(da_list, dim='level').assign_coords(level=[1, 2, 3, 4])
+    da_exceed = da_exceed.where(~nan_mask)  # restore NaNs lost in resample
 
     steps_per_year = _get_tsteps(da_fwi)
     da_exceed = _ann_frac(da_exceed, steps_per_year).rename(var_name)
@@ -479,24 +488,12 @@ def _tetens_sat_vapor_pressure(T_celsius):
     return xr.where(T_celsius > 0, es_positive, es_negative)
 
 
-def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
+def _regrid_xr(ds_in, regrid_to, method='bilinear'):
     """regrid ds_in to the target grid"""
     regridder = xe.Regridder(ds_in, regrid_to, method=method, periodic=True, ignore_degenerate=True)
     ds_out = regridder(ds_in)
-
-    if isinstance(ds_out, xr.DataArray):
-        ds_out.name = name
-        ds_in.name = name
-        temp_ds = ds_out.to_dataset()
-        for var in temp_ds.data_vars:
-            temp_ds[var].attrs = ds_in.attrs
-        temp_ds.attrs = ds_in.to_dataset().attrs
-        temp_ds.attrs["regridded"] = "True"
-        ds_out = temp_ds[ds_out.name]
-    elif isinstance(ds_out, xr.Dataset):
-        for var in ds_out.data_vars:
-            ds_out[var].attrs = ds_in[var].attrs
-        ds_out.attrs = ds_in.attrs
-        ds_out.attrs["regridded"] = "True"
-        
+    for var in ds_out.data_vars:
+        ds_out[var].attrs = ds_in[var].attrs
+    ds_out.attrs = ds_in.attrs
+    ds_out.attrs["regridded"] = "True"
     return ds_out

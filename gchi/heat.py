@@ -9,7 +9,7 @@ from . import newt
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level,
-    _get_tsteps, _ann_frac, _tetens_sat_vapor_pressure,
+    _get_tsteps, _ann_frac, _tetens_sat_vapor_pressure, _nan_mask,
 )
 from .thresholds import hazard_thresholds as _default_thresholds
 
@@ -656,9 +656,9 @@ def HWF(ds_dict, base_dict, percentile_base=90,
     for shift in range(hwd_threshold):
         mask_expanded |= window_all_hot.shift(time=shift, fill_value=False)
 
-    HWF_val = _ann_frac(
-        T.where(mask_expanded).resample(time="1YE").count(), steps_per_year
-    ).rename("HWF")
+    hwf_counts = T.where(mask_expanded).resample(time="1YE").count()
+    hwf_counts = hwf_counts.where(~_nan_mask(T))
+    HWF_val = _ann_frac(hwf_counts, steps_per_year).rename("HWF")
     return _assign_hazard_level(HWF_val, frac_thresholds=hazard_thresholds)
 
 
@@ -694,5 +694,6 @@ def TR(ds_dict, TR_thresh=20, hazard_thresholds=None):
     TN = tr_values(ds_dict)
     steps_per_year = _get_tsteps(TN)
     TR_val = TN.where(TN > TR_thresh).resample(time="1YE").count()
+    TR_val = TR_val.where(~_nan_mask(TN))
     TR_val = _ann_frac(TR_val, steps_per_year).rename("TR")
     return _assign_hazard_level(TR_val, frac_thresholds=hazard_thresholds)

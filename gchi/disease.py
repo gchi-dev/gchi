@@ -7,7 +7,7 @@ all VBD metrics share the same structure — temperature range suitability + mas
 
 import xarray as xr
 
-from ._core import _check_and_convert_units, _ann_frac, _assign_hazard_level, _get_tsteps
+from ._core import _check_and_convert_units, _ann_frac, _assign_hazard_level, _get_tsteps, _nan_mask
 from .thresholds import hazard_thresholds as _default_thresholds
 
 
@@ -31,7 +31,7 @@ def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, hazard_threshold
 
     VS = T.where((T >= T_range[0]) & (T <= T_range[1]))
     VS = VS.resample(time="1YE").count()
-    VS = VS.where(VBD_mask)
+    VS = VS.where(~_nan_mask(T)).where(VBD_mask)
 
     VS_levels = _ann_frac(VS, steps_per_year).rename(var_name)
     return _assign_hazard_level(VS_levels, frac_thresholds=hazard_thresholds)
@@ -119,5 +119,6 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, hazard_thre
         hazard_thresholds = _default_thresholds["VbrS"]
 
     VbrS_val = SST.where((SST >= SST_min) & (SSS < salinity_max)).resample(time="1YE").count()
+    VbrS_val = VbrS_val.where(~_nan_mask(SST))
     VbrS_val = _ann_frac(VbrS_val, steps_per_year).rename("VbrS")
     return _assign_hazard_level(VbrS_val, frac_thresholds=hazard_thresholds)

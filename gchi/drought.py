@@ -11,7 +11,7 @@ from scipy import stats
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level,
-    _get_tsteps, _ann_frac,
+    _get_tsteps, _ann_frac, _nan_mask,
 )
 from .thresholds import hazard_thresholds as _default_thresholds
 
@@ -47,6 +47,7 @@ def CDD(ds_dict, hazard_thresholds=None, min_threshold=10):
         mask_expanded |= window_all_dry.shift(time=shift, fill_value=False)
 
     CDD_val = PR.where(mask_expanded).resample(time="1YE").count()
+    CDD_val = CDD_val.where(~_nan_mask(PR))
     CDD_val = _ann_frac(CDD_val, steps_per_year).rename("CDD")
     return _assign_hazard_level(CDD_val, frac_thresholds=hazard_thresholds)
 
