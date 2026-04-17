@@ -34,14 +34,30 @@ def fi_values(ds_dict):
     return (U.where(U > 1, 1)) / FMI
 
 
-def FI(ds_dict, hazard_thresholds=None):
+def _load_fire_mask(fire_mask_file):
+    """load infrequent burning mask — True where burning is infrequent (mask out)"""
+    if fire_mask_file is not None:
+        return xr.open_dataset(fire_mask_file).mask_infreq_burning
+    return None
+
+
+def FI(ds_dict, hazard_thresholds=None, fire_mask_file=None):
     """
     Fire danger index exceedance levels.
     Call fi_values() to get raw FI without level assignment.
+
+    Parameters
+    ----------
+    fire_mask_file : str, optional
+        path to infrequent burning mask file. cells where burning is infrequent
+        are masked out before exceedance counting.
     """
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["FI"]
     FI_val = fi_values(ds_dict)
+    fire_mask = _load_fire_mask(fire_mask_file)
+    if fire_mask is not None:
+        FI_val = FI_val.where(~fire_mask)
     FI_levels = _annual_exceedance_frac(FI_val, hazard_thresholds=hazard_thresholds, var_name="FI")
     return _assign_hazard_level(FI_levels)
 
@@ -61,14 +77,23 @@ def hdw_values(ds_dict):
     return U * VPD
 
 
-def HDW(ds_dict, hazard_thresholds=None):
+def HDW(ds_dict, hazard_thresholds=None, fire_mask_file=None):
     """
     HDW exceedance levels.
     Call hdw_values() to get raw HDW without level assignment.
+
+    Parameters
+    ----------
+    fire_mask_file : str, optional
+        path to infrequent burning mask file. cells where burning is infrequent
+        are masked out before exceedance counting.
     """
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["HDW"]
     HDW_val = hdw_values(ds_dict)
+    fire_mask = _load_fire_mask(fire_mask_file)
+    if fire_mask is not None:
+        HDW_val = HDW_val.where(~fire_mask)
     HDW_levels = _annual_exceedance_frac(HDW_val, hazard_thresholds=hazard_thresholds, var_name="HDW")
     return _assign_hazard_level(HDW_levels)
 
