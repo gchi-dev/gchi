@@ -1,0 +1,268 @@
+"""
+calculate_all — runs every metric, skipping those with missing inputs or errors
+
+usage:
+    results = gchi.calculate_all(ds_dict, base_dict)
+
+    # optional file paths for metrics that need external files
+    results = gchi.calculate_all(
+        ds_dict, base_dict,
+        fwi_mask_file="path/to/fwi_mask.nc",
+        environmental_zone_file="path/to/env_zones.nc",
+        VBD_mask_file="path/to/vbd_mask.nc",
+        coast_mask_file="path/to/coast_mask.nc",
+        mda8_scale_file="path/to/mda8_scale.nc",
+    )
+
+returns a dict of {metric_name: xr.Dataset} for all metrics that ran successfully.
+metrics that were skipped (missing inputs) or failed (error) are noted in the printed summary.
+"""
+
+import traceback
+
+from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR
+from .cold import UTCIcold, TNXp
+from .fire import FI, HDW, FWI
+from .aq import O3, PM2pt5
+from .drought import CDD, SPI, SPEI
+from .disease import VSmalaria, VSzika, VSdengueAeg, VSdengueAlb, VbrS
+from .weather import PRXmm, PR1day, PR5day
+
+
+# required ds_dict keys per metric
+# if any key is missing, the metric is skipped without even trying
+_REQUIRED_VARS = {
+    "AT":          {"tasmax", "hurs"},
+    "HI":          {"tasmax", "hurs"},
+    "Hu":          {"tasmax", "hurs"},
+    "WBT":         {"tasmax", "ps"},        # also huss or hurs
+    "WBGT":        {"tasmax", "tas", "ps"}, # also huss or hurs
+    "UTCIhot":     {"tasmax", "tas", "hurs", "ps"},
+    "UTCIcold":    {"tasmin", "tas", "hurs", "ps"},
+    "HWF":         {"tas"},
+    "TXC":         {"tasmax"},
+    "TR":          {"tasmin"},
+    "TNXp":        {"tasmin"},
+    "FI":          {"sfcWind", "tas", "hurs"},
+    "HDW":         {"sfcWind", "tas", "hurs"},
+    "FWI":         {"tasmax", "pr", "sfcWind"},  # also hurs or hursmin
+    "O3":          {"o3", "tas", "ps"},
+    "PM2pt5":      {"mmrbc", "mmrdust", "mmroa", "mmrso4", "mmrss", "tas", "ps"},
+    "CDD":         {"pr"},
+    "SPI":         {"pr"},
+    "SPEI":        {"pr", "evspsbl"},
+    "VSmalaria":   {"tas"},
+    "VSzika":      {"tas"},
+    "VSdengueAeg": {"tas"},
+    "VSdengueAlb": {"tas"},
+    "VbrS":        {"tos", "sos"},
+    "PRXmm":       {"pr"},
+    "PR1day":      {"pr"},
+    "PR5day":      {"pr"},
+}
+
+# required base_dict keys per metric (if base_dict is provided)
+# if any key is missing, the metric is skipped
+_REQUIRED_BASE = {
+    "HWF":    {"tas"},       # also needs t{p}p_calday, checked at runtime
+    "TNXp":   set(),         # checked at runtime (needs tasmin_{p}p keys)
+    "SPI":    {"pr"},
+    "SPEI":   {"pr", "evspsbl"},
+    "PR1day": set(),         # checked at runtime (needs pr_{p}p keys)
+    "PR5day": set(),         # checked at runtime (needs rx5day_{p}p keys)
+}
+
+
+def _check_vars(ds_dict, base_dict, metric):
+    """
+    Returns (can_run, reason) — reason is a short string explaining why it can't run.
+    Checks ds_dict keys and (where relevant) base_dict keys.
+    """
+    required = _REQUIRED_VARS.get(metric, set())
+    missing_ds = required - set(ds_dict.keys())
+
+    # WBT/WBGT/UTCIhot/UTCIcold need huss or hurs, not necessarily both
+    if metric in {"WBT", "WBGT", "UTCIhot", "UTCIcold"}:
+        if "huss" not in ds_dict and "hurs" not in ds_dict:
+            missing_ds.add("huss or hurs")
+
+    # FWI needs hurs or hursmin
+    if metric == "FWI":
+        if "hurs" not in ds_dict and "hursmin" not in ds_dict:
+            missing_ds.add("hurs or hursmin")
+
+    if missing_ds:
+        return False, f"missing ds_dict vars: {', '.join(sorted(missing_ds))}"
+
+    # base_dict checks
+    if metric in _REQUIRED_BASE:
+        if base_dict is None:
+            return False, "base_dict not provided"
+        required_base = _REQUIRED_BASE[metric]
+        missing_base = required_base - set(base_dict.keys())
+        if missing_base:
+            return False, f"missing base_dict vars: {', '.join(sorted(missing_base))}"
+
+    return True, None
+
+
+def calculate_all(
+    ds_dict,
+    base_dict=None,
+    # file paths for metrics that need external files
+    fwi_mask_file=None,
+    environmental_zone_file=None,
+    VBD_mask_file=None,
+    coast_mask_file=None,
+    mda8_scale_file=None,
+    mda8_scale_varname="o3",
+    # optional: run prepare_inputs automatically before calculating
+    # leave model_grid_file=None if you already ran prepare_inputs yourself
+    model_grid_file=None,
+    regrid=True,
+    regrid_method="bilinear",
+    spatial_chunk="auto",
+    coastal_mask_file_prep=None,  # coastal mask for prepare_inputs (tos/sos masking)
+    mask_land=True,
+    land_mask_file=None,
+    land_mask_var="land_mask",
+    # optional overrides
+    TR_thresh=20,
+    percentile_base=90,
+):
+    """
+    Run all gchi metrics on ds_dict, skipping those with missing inputs.
+
+    Parameters
+    ----------
+    ds_dict : dict
+        dict of xr.DataArrays keyed by CMIP6 shortname
+    base_dict : dict, optional
+        output from calculate_base_period_percentiles(). needed for HWF, TNXp, SPI, SPEI, PR1day, PR5day
+    fwi_mask_file : str, optional
+        path to infrequent burning mask file (for FWI)
+    environmental_zone_file : str, optional
+        path to environmental zone file (for FWI spatially-varying thresholds)
+    VBD_mask_file : str, optional
+        path to aridity mask file (for VSmalaria, VSzika, VSdengue*)
+    coast_mask_file : str, optional
+        path to coastal mask file (for VbrS)
+    mda8_scale_file : str, optional
+        path to MDA8 scale factor file (for O3)
+    mda8_scale_varname : str
+        variable name in mda8_scale_file (default 'o3')
+    TR_thresh : float
+        tropical nights threshold (default 20°C)
+    percentile_base : int
+        percentile base for HWF (default 90)
+
+    Returns
+    -------
+    dict
+        {metric_name: xr.Dataset} for each metric that ran successfully.
+        skipped and failed metrics are printed to console.
+    """
+
+    # run prepare_inputs automatically if a grid file is provided or regrid=False explicitly set
+    if model_grid_file is not None or not regrid:
+        from .inputs import prepare_inputs
+        print("running prepare_inputs before calculate_all...")
+        ds_dict = prepare_inputs(ds_dict, spatial_chunk=spatial_chunk,
+                                 model_grid_file=model_grid_file,
+                                 regrid=regrid,
+                                 regrid_method=regrid_method,
+                                 coastal_mask_file=coastal_mask_file_prep,
+                                 mask_land=mask_land,
+                                 land_mask_file=land_mask_file,
+                                 land_mask_var=land_mask_var)
+
+    results = {}
+    skipped = {}   # metric -> reason (missing inputs)
+    failed  = {}   # metric -> error message
+
+    def _run(name, fn):
+        """attempt to run fn(), store result or failure"""
+        can_run, reason = _check_vars(ds_dict, base_dict, name)
+        if not can_run:
+            skipped[name] = reason
+            print(f"  skipping {name} — {reason}")
+            return
+        print(f"  running {name}...")
+        try:
+            result = fn()
+            if result is not None:
+                results[name] = result
+            else:
+                skipped[name] = "returned None (likely a threshold mismatch — check printed warnings)"
+                print(f"  skipping {name} — returned None")
+        except Exception as e:
+            failed[name] = str(e)
+            print(f"  ERROR in {name}: {e}")
+            print(f"    {traceback.format_exc().splitlines()[-2]}")  # one-liner from traceback
+
+    print("=== calculate_all ===")
+
+    # --- heat stress ---
+    print("\n-- heat stress --")
+    _run("AT",      lambda: AT(ds_dict))
+    _run("HI",      lambda: HI(ds_dict))
+    _run("Hu",      lambda: Hu(ds_dict))
+    _run("WBT",     lambda: WBT(ds_dict))
+    _run("WBGT",    lambda: WBGT(ds_dict))
+    _run("UTCIhot", lambda: UTCIhot(ds_dict))
+    _run("HWF",     lambda: HWF(ds_dict, base_dict, percentile_base=percentile_base))
+    _run("TXC",     lambda: TXC(ds_dict))
+    _run("TR",      lambda: TR(ds_dict, TR_thresh=TR_thresh))
+
+    # --- cold ---
+    print("\n-- cold extremes --")
+    _run("UTCIcold", lambda: UTCIcold(ds_dict))
+    _run("TNXp",     lambda: TNXp(ds_dict, base_dict))
+
+    # --- fire ---
+    print("\n-- fire --")
+    _run("FI",  lambda: FI(ds_dict))
+    _run("HDW", lambda: HDW(ds_dict))
+    _run("FWI", lambda: FWI(ds_dict,
+                            fwi_mask_file=fwi_mask_file,
+                            environmental_zone_file=environmental_zone_file))
+
+    # --- air quality ---
+    print("\n-- air quality --")
+    _run("O3",     lambda: O3(ds_dict, mda8_scale_file=mda8_scale_file,
+                               mda8_scale_varname=mda8_scale_varname))
+    _run("PM2pt5", lambda: PM2pt5(ds_dict))
+
+    # --- drought ---
+    print("\n-- drought --")
+    _run("CDD",  lambda: CDD(ds_dict))
+    _run("SPI",  lambda: SPI(base_dict, ds_dict))
+    _run("SPEI", lambda: SPEI(base_dict, ds_dict))
+
+    # --- disease ---
+    print("\n-- disease --")
+    _run("VSmalaria",   lambda: VSmalaria(ds_dict, VBD_mask_file=VBD_mask_file))
+    _run("VSzika",      lambda: VSzika(ds_dict, VBD_mask_file=VBD_mask_file))
+    _run("VSdengueAeg", lambda: VSdengueAeg(ds_dict, VBD_mask_file=VBD_mask_file))
+    _run("VSdengueAlb", lambda: VSdengueAlb(ds_dict, VBD_mask_file=VBD_mask_file))
+    _run("VbrS",        lambda: VbrS(ds_dict, coast_mask_file=coast_mask_file))
+
+    # --- weather ---
+    print("\n-- weather --")
+    _run("PRXmm", lambda: PRXmm(ds_dict))
+    _run("PR1day", lambda: PR1day(ds_dict, base_dict))
+    _run("PR5day", lambda: PR5day(ds_dict, base_dict))
+
+    # --- summary ---
+    print("\n=== calculate_all complete ===")
+    print(f"  calculated : {len(results)} metrics — {list(results.keys())}")
+    if skipped:
+        print(f"  skipped    : {len(skipped)} metrics")
+        for name, reason in skipped.items():
+            print(f"    {name}: {reason}")
+    if failed:
+        print(f"  failed     : {len(failed)} metrics")
+        for name, reason in failed.items():
+            print(f"    {name}: {reason}")
+
+    return results
