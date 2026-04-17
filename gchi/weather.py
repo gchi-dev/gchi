@@ -10,7 +10,7 @@ import xarray as xr
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level,
-    _get_tsteps, _ann_frac,
+    _get_tsteps, _ann_frac, _nan_mask
 )
 from .thresholds import hazard_thresholds as _default_thresholds
 
@@ -43,8 +43,9 @@ def PR1day(ds_dict, base_dict, hazard_thresholds=None):
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["PR1day"]
 
-    PR = pr_values(ds_dict)
+    PR = pr_values(ds_dict).chunk({"lat": -1, "lon": -1})
     steps_per_year = _get_tsteps(PR)
+    nanmask = _nan_mask(PR)
     PR = PR.where(PR > 1)  # wet day condition
 
     pr_base_percentile_vals = [
@@ -66,7 +67,7 @@ def PR1day(ds_dict, base_dict, hazard_thresholds=None):
 
     da_list = []
     for key in pr_base_percentile_keys:
-        th = base_dict[key]
+        th = base_dict[key].chunk({"lat": -1, "lon": -1})
         da_count = (PR > th).resample(time='1YE').sum(dim='time', skipna=True)
         da_list.append(da_count)
 
@@ -75,6 +76,7 @@ def PR1day(ds_dict, base_dict, hazard_thresholds=None):
     PR1day_val.attrs['level_values'] = pr_base_percentile_keys
     PR1day_val = _ann_frac(PR1day_val, steps_per_year).rename("PR1day")
     PR1day_val = _assign_hazard_level(PR1day_val)
+    PR1day_val = PR1day_val.where(~nanmask)
     PR1day_val.attrs['level_thresholds'] = [
         {"level": int(i + 1), "threshold_value": pr_base_percentile_vals[i],
          "unit": "percentile", "source": "base period distribution"}
@@ -96,8 +98,9 @@ def PR5day(ds_dict, base_dict, hazard_thresholds=None):
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["PR5day"]
 
-    PR = pr_values(ds_dict)
+    PR = pr_values(ds_dict).chunk({'lat': -1, 'lon': -1})
     steps_per_year = _get_tsteps(PR)
+    nanmask = _nan_mask(PR)
 
     rx5day_base_percentile_vals = [
         float(k.split("_")[1].replace("pt", ".").replace("p", ""))
@@ -122,7 +125,7 @@ def PR5day(ds_dict, base_dict, hazard_thresholds=None):
 
     da_list = []
     for key in rx5day_base_percentile_keys:
-        th = base_dict[key]
+        th = base_dict[key].chunk({'lat': -1, 'lon': -1})
 
         # identify 5-day windows that exceed the threshold
         mask_center = rolling_sum > th
@@ -140,6 +143,7 @@ def PR5day(ds_dict, base_dict, hazard_thresholds=None):
     PR5day_val.attrs['level_values'] = rx5day_base_percentile_keys
     PR5day_val = _ann_frac(PR5day_val, steps_per_year).rename("PR5day")
     PR5day_val = _assign_hazard_level(PR5day_val)
+    PR5day_val = PR5day_val.where(~nanmask)
     PR5day_val.attrs['level_thresholds'] = [
         {"level": int(i + 1), "threshold_value": rx5day_base_percentile_vals[i],
          "unit": "percentile", "source": "base period distribution"}

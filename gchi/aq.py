@@ -39,11 +39,9 @@ def o3_values(ds_dict):
     (prepare_inputs handles this more efficiently before regridding).
     """
     O3 = ds_dict["o3"]
-
     # fallback surface extraction -- no-op if already 2D (prepare_inputs ran)
     if ("plev" in O3.dims) or ("lev" in O3.dims):
         O3 = _get_surface(O3, "o3")
-
     units_attr = None
     for k in O3.attrs:
         if k.lower() in ["unit", "units"]:
@@ -110,7 +108,7 @@ def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, mda8_scale_varname
         hazard_thresholds = _default_thresholds["O3day"] if is_daily else _default_thresholds["O3mon"]
 
     # always collapse to monthly
-    O3_val = O3_val.resample(time="1ME").mean()
+    O3_val = O3_val.resample(time="1ME").mean().load()
 
     if mda8_scale_file is None:
         print("  mda8_scale_file not provided -- skipping MDA8 scaling. using raw monthly O3.")

@@ -1,6 +1,10 @@
 """
 gchi — Global Climate Hazard Index
 """
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .inputs import (
     prepare_inputs,

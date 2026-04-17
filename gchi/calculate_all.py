@@ -67,7 +67,7 @@ _REQUIRED_BASE = {
     "HWF":    {"tas"},       # also needs t{p}p_calday, checked at runtime
     "TNXp":   set(),         # checked at runtime (needs tasmin_{p}p keys)
     "SPI":    {"pr"},
-    "SPEI":   {"pr", "evspsbl"},
+    "SPEI":   {"pr", "evspsblpot"},
     "PR1day": set(),         # checked at runtime (needs pr_{p}p keys)
     "PR5day": set(),         # checked at runtime (needs rx5day_{p}p keys)
 }
@@ -176,6 +176,49 @@ def calculate_all(
                                  land_mask_file=land_mask_file,
                                  land_mask_var=land_mask_var)
 
+    # if base_dict is provided with raw data (tas/tasmin/pr as DataArrays or Datasets),
+    # run calculate_base_period_percentiles on it to get the percentile thresholds needed
+    # by HWF, TNXp, PR1day, PR5day. SPI/SPEI use the raw pr directly from base_dict.
+    if base_dict is not None:
+        if model_grid_file is not None or not regrid:
+            print("running prepare_inputs on base_dict...")
+            base_dict_prepped = {}
+            base_dict = prepare_inputs(base_dict,
+                        model_grid_file=model_grid_file,
+                        regrid=regrid,
+                        regrid_method=regrid_method,
+                        coastal_mask_file=coastal_mask_file_prep,
+                        mask_land=mask_land,
+                        land_mask_file=land_mask_file,
+                        land_mask_var=land_mask_var
+                    )
+        from .inputs import calculate_base_period_percentiles
+        needs_pct = not any(k.endswith("p_calday") or k.endswith("p") and "_" in k
+                            for k in base_dict.keys())
+        if needs_pct:
+            print("base_dict looks like raw data -- computing percentile thresholds automatically...")
+            base_dict_pct = calculate_base_period_percentiles(
+                tas=base_dict.get("tas"),
+                tasmin=base_dict.get("tasmin"),
+                pr=base_dict.get("pr"),
+            )
+            # merge: keep raw data (for SPI/SPEI) + add computed percentiles
+            base_dict = {**base_dict, **base_dict_pct}
+    elif base_dict is None:
+        from .inputs import calculate_base_period_percentiles
+        has_tas    = "tas" in ds_dict
+        has_tasmin = "tasmin" in ds_dict
+        has_pr     = "pr" in ds_dict
+        if any([has_tas, has_tasmin, has_pr]):
+            print("base_dict not provided -- computing automatically from ds_dict...")
+            base_dict = calculate_base_period_percentiles(
+                tas=ds_dict["tas"]    if has_tas    else None,
+                tasmin=ds_dict["tasmin"] if has_tasmin else None,
+                pr=ds_dict["pr"]      if has_pr     else None,
+            )
+        else:
+            print("base_dict not provided and no tas/tasmin/pr in ds_dict -- skipping percentile-based metrics.")
+
     results = {}
     skipped = {}   # metric -> reason (missing inputs)
     failed  = {}   # metric -> error message
@@ -221,8 +264,8 @@ def calculate_all(
 
     # --- fire ---
     print("\n-- fire --")
-    _run("FI",  lambda: FI(ds_dict))
-    _run("HDW", lambda: HDW(ds_dict))
+    _run("FI",  lambda: FI(ds_dict, fire_mask_file=fwi_mask_file))
+    _run("HDW", lambda: HDW(ds_dict, fire_mask_file=fwi_mask_file))
     _run("FWI", lambda: FWI(ds_dict,
                             fwi_mask_file=fwi_mask_file,
                             environmental_zone_file=environmental_zone_file))

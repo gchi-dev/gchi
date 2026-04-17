@@ -15,6 +15,19 @@ from ._core import (
 )
 from .thresholds import hazard_thresholds as _default_thresholds
 
+def _extract_da(val, var_name):
+    """
+    Extract a DataArray from either a DataArray or Dataset.
+    Supports passing a raw dict of Datasets as base_dict (e.g. esm2_base_dict)
+    or the output of calculate_base_period_percentiles() which has DataArrays.
+    """
+    if isinstance(val, xr.DataArray):
+        return val
+    elif isinstance(val, xr.Dataset):
+        if var_name in val:
+            return val[var_name]
+        return val[list(val.data_vars)[0]]
+    raise TypeError(f"base_dict['{var_name}'] must be a DataArray or Dataset, got {type(val)}")
 
 def cdd_values(ds_dict):
     """
@@ -70,7 +83,8 @@ def SPI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["SPI"]
 
-    base_pr = _check_and_convert_units(da=base_dict['pr'], input_var="pr", conv_type="mm day-1")
+    # base_pr = _check_and_convert_units(da=base_dict['pr'], input_var="pr", conv_type="mm day-1")
+    base_pr = _check_and_convert_units(da=_extract_da(base_dict['pr'], 'pr'), input_var="pr", conv_type="mm day-1")
     base_acc = base_pr.resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
 
     study_pr = _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
@@ -124,8 +138,10 @@ def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
     EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
     base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
 
-    PR = _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
-    EVSPSBLPOT = _check_and_convert_units(da=ds_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
+    # PR = _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
+    # EVSPSBLPOT = _check_and_convert_units(da=ds_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
+    PR_base = _check_and_convert_units(da=_extract_da(base_dict['pr'], 'pr'), input_var="pr", conv_type="mm day-1")
+    EVSPSBLPOT_base = _check_and_convert_units(da=_extract_da(base_dict['evspsblpot'], 'evspsblpot'), input_var="evspsblpot", conv_type="mm day-1")
     study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
 
     def _fit_and_apply_genlog(hist_data, study_data):

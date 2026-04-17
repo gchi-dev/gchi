@@ -31,7 +31,7 @@ def _wbt_values(ds_dict):
     TX = _check_and_convert_units(da=ds_dict["tasmax"], input_var="tasmax", conv_type="K")
 
     if "huss" in ds_dict:
-        q = ds_dict["huss"]
+        q = _check_and_convert_units(da=ds_dict['huss'], input_var="huss", conv_type="fraction")
     else:
         # derive q from RH using newt's saturation_specific_humidity
         RH = _check_and_convert_units(da=ds_dict['hurs'], input_var="hurs", conv_type="fraction")
@@ -444,7 +444,7 @@ def at_values(ds_dict):
     RH = RH.clip(0.001, 0.999999)
 
     es = _tetens_sat_vapor_pressure(TX)
-    VP = es * (RH / 100)
+    VP = es * RH
     return (0.92 * TX) + (0.22 * VP) - 1.3
 
 
@@ -623,7 +623,7 @@ def HWF(ds_dict, base_dict, percentile_base=90,
         hazard_thresholds = _default_thresholds["HWF"]
 
     varname = f"t{str(percentile_base)}p_calday"
-    TXp_calday = _check_and_convert_units(da=base_dict[varname], input_var=varname, conv_type="C")
+    TXp_calday = _check_and_convert_units(da=base_dict[varname], input_var=varname, conv_type="C").chunk({"lat": -1, "lon": -1})
 
     T = _check_and_convert_units(da=ds_dict['tas'], input_var="tas", conv_type="C")
     steps_per_year = _get_tsteps(T)
@@ -643,13 +643,13 @@ def HWF(ds_dict, base_dict, percentile_base=90,
             output_dtypes=[T.dtype],
         )
 
-    T_base_avg = _check_and_convert_units(da=base_dict["tas"].mean("time"), input_var="tas", conv_type="C")
-    T_warm = T.where(T > T_base_avg)
+    T_base_avg = _check_and_convert_units(da=base_dict["tas"].mean("time"), input_var="tas", conv_type="C").chunk({"lat": -1, "lon": -1})
+    T_warm = T.where(T > T_base_avg).chunk({"time": -1})
 
     T_anom = T_warm.groupby("time.dayofyear") - TXp_calday
-    heat_mask = T_anom > 0
+    heat_mask = (T_anom > 0).chunk({"time": -1})
 
-    rolling_sum = T_anom.where(heat_mask).rolling(time=hwd_threshold, center=False).count()
+    rolling_sum = T_anom.where(heat_mask).compute().rolling(time=hwd_threshold, center=False).count()
     window_all_hot = rolling_sum == hwd_threshold
 
     mask_expanded = xr.zeros_like(heat_mask, dtype=bool)

@@ -15,7 +15,7 @@ hazard_thresholds = {
     "TNXp": [10, 5, 2, 0.5],  # unit percentile
     "FI": [0.852, 1.125, 1.579, 2.418], # FI index, unitless 
     "FWI": [12.23, 22.95, 36.83, 50],  # index
-    "HDW": [0.011, 0.017, 0.027, 0.041],  # HDW index, unitless 
+    "HDW": [3.932, 6.251, 9.746, 15.124],  # HDW index, unitless 
     "O3mon": [60, 65, 70, 100],  # ug/m^3
     "O3day": [100, 110, 120, 160],  # ug/m^3
     "PM2pt5mon": [5, 15, 25, 35],  # ug/m^3

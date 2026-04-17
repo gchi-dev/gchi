@@ -24,14 +24,21 @@ def _fmi_values(ds_dict):
     return 10 - 0.25 * (T - RH)
 
 
-def fi_values(ds_dict):
+def fi_values(ds_dict, fire_mask_file=None):
     """
     Fire danger index values (Sharples et al. 2009).
     https://doi.org/10.1016/j.envsoft.2008.10.012
     """
+
+    if fire_mask_file is not None:
+        fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
+    else:
+        print("no FWI mask file provided — proceeding without infrequent burning mask")
+        fwi_mask = False  # no masking
+
     U = _check_and_convert_units(da=ds_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1")
     FMI = _fmi_values(ds_dict)
-    return (U.where(U > 1, 1)) / FMI
+    return ((U.where(U > 1, 1)) / FMI).where(~fwi_mask)
 
 
 def _load_fire_mask(fire_mask_file):
@@ -54,7 +61,7 @@ def FI(ds_dict, hazard_thresholds=None, fire_mask_file=None):
     """
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["FI"]
-    FI_val = fi_values(ds_dict)
+    FI_val = fi_values(ds_dict, fire_mask_file=fire_mask_file)
     fire_mask = _load_fire_mask(fire_mask_file)
     if fire_mask is not None:
         FI_val = FI_val.where(~fire_mask)
@@ -62,19 +69,25 @@ def FI(ds_dict, hazard_thresholds=None, fire_mask_file=None):
     return _assign_hazard_level(FI_levels)
 
 
-def hdw_values(ds_dict):
+def hdw_values(ds_dict, fire_mask_file=None):
     """
     Hot-Dry-Windy index values (Srock et al. 2018).
     https://doi.org/10.3390/atmos9070279
     """
+    if fire_mask_file is not None:
+        fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
+    else:
+        print("no FWI mask file provided — proceeding without infrequent burning mask")
+        fwi_mask = False  # no masking
+
     T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="C")
-    RH = _check_and_convert_units(da=ds_dict["hurs"], input_var="hurs", conv_type="%")
-    RH = RH.clip(0.1, 99.9999)
+    RH = _check_and_convert_units(da=ds_dict["hurs"], input_var="hurs", conv_type="fraction")
+    RH = RH.clip(0.001, 0.999999)
     U = _check_and_convert_units(da=ds_dict["sfcWind"], input_var="sfcWind", conv_type="m s-1")
 
     es = _tetens_sat_vapor_pressure(T)
-    VPD = (1 - RH / 100) * es
-    return U * VPD
+    VPD = (1 - RH) * es
+    return (U * VPD).where(~fwi_mask)
 
 
 def HDW(ds_dict, hazard_thresholds=None, fire_mask_file=None):
@@ -90,7 +103,7 @@ def HDW(ds_dict, hazard_thresholds=None, fire_mask_file=None):
     """
     if hazard_thresholds is None:
         hazard_thresholds = _default_thresholds["HDW"]
-    HDW_val = hdw_values(ds_dict)
+    HDW_val = hdw_values(ds_dict, fire_mask_file=fire_mask_file)
     fire_mask = _load_fire_mask(fire_mask_file)
     if fire_mask is not None:
         HDW_val = HDW_val.where(~fire_mask)
@@ -178,7 +191,7 @@ def _dmc_step(temp, rh, rain, dmc_prev, day_length):
                            6.2 * np.log(dmc_prev) - 17.2))
 
     mr = mo + 1000.0 * re / (48.77 + b * re)
-    pr = (244.72 - 43.43 * np.log(mr - 20.0)).clip(min=0)
+    pr = (244.72 - 43.43 * np.log(mr - 20.0)).clip(min=0)  
     k = 1.894 * (temp.clip(min=-1.1) + 1.1) * (100.0 - rh) * day_length * 1e-4
 
     return xr.where(rain > 1.5, pr + k, dmc_prev + k).clip(min=0)
@@ -190,7 +203,7 @@ def _dc_step(temp, rain, dc_prev, day_length, month, lat):
 
     rd = xr.where(rain > 2.8, 0.83 * rain - 1.27, 0.0)
     qo = 800.0 * np.exp(-dc_prev / 400.0)
-    qr = qo + 3.937 * rd
+    qr = (qo + 3.937 * rd)
     dr = (400.0 * np.log(800.0 / qr)).clip(min=0)
     v = 0.36 * (temp.clip(min=-2.8) + 2.8) + day_length
 

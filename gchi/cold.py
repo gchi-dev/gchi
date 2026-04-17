@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 
 from ._core import (
-    _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level, _get_tsteps, _ann_frac,
+    _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level, _get_tsteps, _ann_frac, _nan_mask
 )
 from .heat import _utci_values
 from .thresholds import hazard_thresholds as _default_thresholds
@@ -38,6 +38,7 @@ def TNXp(ds_dict, base_dict, hazard_thresholds=None, temp_max=15):
         hazard_thresholds = _default_thresholds["TNXp"]
 
     TN = _check_and_convert_units(da=ds_dict["tasmin"], input_var="tasmin", conv_type="C")
+    nan_mask = _nan_mask(TN)
     TN = TN.where(TN < temp_max)
     steps_per_year = _get_tsteps(TN)
 
@@ -69,6 +70,7 @@ def TNXp(ds_dict, base_dict, hazard_thresholds=None, temp_max=15):
     TNXp_val.attrs['level_values'] = tasmin_base_percentile_keys
     TNXp_val = _ann_frac(TNXp_val, steps_per_year).rename("TNXp")
     TNXp_val = _assign_hazard_level(TNXp_val)
+    TNXp_val = TNXp_val.where(~nan_mask)
     TNXp_val.attrs['level_thresholds'] = [
         {"level": int(i + 1), "threshold_value": tasmin_base_percentile_vals[i],
          "unit": "percentile", "source": "base period distribution"}

@@ -115,13 +115,13 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     Always rechunks -- safe to call on numpy or already-dask inputs.
 
     Steps applied in order:
-      0. surface extraction for column vars (o3, mmr*) -- done before regrid
+      - surface extraction for column vars (o3, mmr*) -- done before regrid
          so only the surface level is regridded, not the full column
-      1. regrid to target grid (skipped if grids match or regrid=False)
-      2. land mask (skipped for ocean vars tos/sos, or if mask_land=False)
-      3. drop antarctica (lat < -60)
-      4. coastal mask (tos/sos only)
-      5. chunk + drop bounds
+      - regrid to target grid (skipped if grids match or regrid=False)
+      - land mask (skipped for ocean vars tos/sos, or if mask_land=False)
+      - drop antarctica (lat < -60)
+      - coastal mask (tos/sos only)
+      - chunk + drop bounds
 
     if a user skips prepare_inputs, surface extraction still happens as a
     fallback inside the metric functions (o3, pm25) themselves.
@@ -164,28 +164,10 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     if model_grid_file is not None and regrid:
         target_grid = xr.open_dataset(model_grid_file)
 
-    # load land mask once up front and validate its grid
-    land_mask = None
-    if mask_land:
-        if land_mask_file is not None:
-            land_mask_ds = xr.open_dataset(land_mask_file)
-            land_mask = land_mask_ds[land_mask_var]
-            # check that the land mask grid matches the data (or target grid if regridding)
-            reference = target_grid if target_grid is not None else next(iter(ds_dict.values()))
-            if not _grids_match(land_mask, reference):
-                raise ValueError(
-                    "land mask grid does not match the model output / target grid. "
-                    "options: (1) pass a land_mask_file that matches your model output or target grid, "
-                    "(2) run prepare_inputs with regrid=True and a matching model_grid_file, "
-                    "or (3) set mask_land=False to skip land masking."
-                )
-        else:
-            print("  WARNING: mask_land=True but no land_mask_file provided -- skipping land masking.")
-
     ds_dict_prepared = {}
     for key, da in ds_dict.items():
 
-        # 0. surface extraction for column vars -- before regrid so we don't
+        # surface extraction for column vars -- before regrid so we don't
         #    regrid the full column. _get_surface is a no-op if no vertical dim.
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
@@ -193,7 +175,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
                 print(f"  {key}: extracting surface level before regrid...")
                 da = _get_surface(da, key)
 
-        # 1. regridding
+        # regridding
         if target_grid is not None:
             if _grids_match(da, target_grid):
                 print(f"  {key}: already on target grid -- skipping regrid")
@@ -203,15 +185,34 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         elif not regrid:
             pass  # user explicitly disabled regrid
 
-        # 2. land mask (skip for ocean vars)
+        # land mask (skip for ocean vars)
+        # load land mask once up front and validate its grid
+        land_mask = None
+        if mask_land:
+            if land_mask_file is not None:
+                land_mask_ds = xr.open_dataset(land_mask_file)
+                land_mask = land_mask_ds[land_mask_var]
+                # check that the land mask grid matches the data (or target grid if regridding)
+                reference = target_grid if target_grid is not None else next(iter(ds_dict.values()))
+                if not _grids_match(land_mask, reference):
+                    raise ValueError(
+                        "land mask grid does not match the model output / target grid. "
+                        "options: (1) pass a land_mask_file that matches your model output or target grid, "
+                        "(2) run prepare_inputs with regrid=True and a matching model_grid_file, "
+                        "or (3) set mask_land=False to skip land masking."
+                    )
+            else:
+                print("  WARNING: mask_land=True but no land_mask_file provided -- skipping land masking.")
+
+
         if land_mask is not None and key not in _OCEAN_VARS:
-            da = da.where(~land_mask)  # land_mask True = land, set to NaN
+            da = da.where(land_mask)  # land_mask True = land, set to NaN
 
-        # 3. drop antarctica
+        # drop antarctica
         if "lat" in da.coords:
-            da = da.where(da.lat > _ANTARCTIC_LAT, drop=True)
+            da = da.where(da.lat > _ANTARCTIC_LAT)
 
-        # 4. coastal mask (ocean vars only)
+        # coastal mask (ocean vars only)
         if key in _OCEAN_VARS:
             if coastal_mask_file is not None:
                 coastal_mask = xr.open_dataset(coastal_mask_file)
@@ -219,10 +220,10 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
             else:
                 print(f"  coastal mask file not provided -- tos/sos will not be masked to coastal cells")
 
-        # 5. chunk + drop bounds
+        # chunk + drop bounds
         chunk_dict = {dim: -1 if dim == "time" else spatial_chunk for dim in da.dims}
         ds_dict_prepared[key] = _drop_all_bounds(da.chunk(chunk_dict))
-        print(f"  {key}: chunks {chunk_dict}")
+        #print(f"  {key}: chunks {chunk_dict}")
 
         has_unit = any(k.lower() in ["unit", "units"] for k in da.attrs)
         if not has_unit:
