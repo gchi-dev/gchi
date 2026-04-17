@@ -488,12 +488,24 @@ def _tetens_sat_vapor_pressure(T_celsius):
     return xr.where(T_celsius > 0, es_positive, es_negative)
 
 
-def _regrid_xr(ds_in, regrid_to, method='bilinear'):
+def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
     """regrid ds_in to the target grid"""
     regridder = xe.Regridder(ds_in, regrid_to, method=method, periodic=True, ignore_degenerate=True)
     ds_out = regridder(ds_in)
-    for var in ds_out.data_vars:
-        ds_out[var].attrs = ds_in[var].attrs
-    ds_out.attrs = ds_in.attrs
-    ds_out.attrs["regridded"] = "True"
+
+    if isinstance(ds_out, xr.DataArray):
+        ds_out.name = name
+        ds_in.name = name
+        temp_ds = ds_out.to_dataset()
+        for var in temp_ds.data_vars:
+            temp_ds[var].attrs = ds_in.attrs
+        temp_ds.attrs = ds_in.to_dataset().attrs
+        temp_ds.attrs["regridded"] = "True"
+        ds_out = temp_ds[ds_out.name]
+    elif isinstance(ds_out, xr.Dataset):
+        for var in ds_out.data_vars:
+            ds_out[var].attrs = ds_in[var].attrs
+        ds_out.attrs = ds_in.attrs
+        ds_out.attrs["regridded"] = "True"
+        
     return ds_out
