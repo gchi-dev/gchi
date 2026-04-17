@@ -110,9 +110,9 @@ def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
     Parameters
     ----------
     base_dict : dict
-        needs 'pr' and 'evspsbl'
+        needs 'pr' and 'evspsblpot'
     ds_dict : dict
-        needs 'pr' and 'evspsbl'
+        needs 'pr' and 'evspsblpot'
     timescale : int
         accumulation timescale in months (default 6)
     """
@@ -120,12 +120,12 @@ def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
         hazard_thresholds = _default_thresholds["SPEI"]
 
     PR_base = _check_and_convert_units(da=base_dict['pr'], input_var="pr", conv_type="mm day-1")
-    EVSPSBL_base = _check_and_convert_units(da=base_dict['evspsbl'], input_var="evspsbl", conv_type="mm day-1")
-    base_acc = (PR_base - EVSPSBL_base).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
+    EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
+    base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
 
     PR = _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
-    EVSPSBL = _check_and_convert_units(da=ds_dict['evspsbl'], input_var="evspsbl", conv_type="mm day-1")
-    study_acc = (PR - EVSPSBL).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
+    EVSPSBLPOT = _check_and_convert_units(da=ds_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
+    study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
 
     def _fit_and_apply_genlog(hist_data, study_data):
         hist_clean = hist_data[~np.isnan(hist_data)]

@@ -50,7 +50,7 @@ _REQUIRED_VARS = {
     "PM2pt5":      {"mmrbc", "mmrdust", "mmroa", "mmrso4", "mmrss", "tas", "ps"},
     "CDD":         {"pr"},
     "SPI":         {"pr"},
-    "SPEI":        {"pr", "evspsbl"},
+    "SPEI":        {"pr", "evspsblpot"},
     "VSmalaria":   {"tas"},
     "VSzika":      {"tas"},
     "VSdengueAeg": {"tas"},
