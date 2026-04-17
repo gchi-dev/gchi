@@ -2,11 +2,13 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 import xesmf as xe
+from scipy import stats
 
 import newt
 SOFTWARE_VERSION = "0.0.0"
 
 # code reminders
+# might have to back filled nan-ed coastal grid cells in vibrio. see calc_thresholds project dir for a method
 # have a summary output that summarizes the software version, where default thresholds applied, and any approximations (aka simplified equations) used
 # make a func to convert the dims to time/lat/lon 
 # test utci with tmrt calculation
@@ -19,27 +21,21 @@ SOFTWARE_VERSION = "0.0.0"
 # warn users against default HWF detrend if only a few years of data because we remove the trend of the study period itself if only annual data then trend prob 0 and results will appear seasonal
 # check HWF calculation to ensure it makes sense the detrending part 
 # prob make calculate base percentiles faster
-# fix ann_frac so can actual count the # days in a year bc when passed, it is just 1 day (annual count)
 # add level attributes to the exceedance days func 
 # add UTCI cold
 # TNXp might not be the best metric because if days > 3 thats normal for the 90th percentile value. no level relevance. it should exceed the relative number of days of each percentile right? maybe do it that way. or drop the metric
 # add metadata to levels and what not 
-#maybe restrict to no antarctica. add option to override. 
 # in preprocess, if tsteps > 365 then resample and mean (most vars) sum for accum (precip)
 # TNXp and R1day indices - need to be > # days percentile 
 # R5day check this, but I think don't need minimum days because already 5-day annual max, so if 5-day exceeds its already exceeding 3 days. 
 # masks needed
-#2. 1x1 grid ocean 
 # maybe add an fwi option to just have 4 levels as fallback 
-# # vibrio - models will have different topo. for now, just regrid to 1x1 and use coastal mask
-        # Vibrio suitability is coastal, so regrid to get all the models on the same page
-        # using the coastal mask, populate coastal cells with the nearest non-nan neighbor
-# idea for AQ - IF it exceeds annual criteria, what frac of year exceeds thresholds
 # in aq exceedance func and elsewhere allow the opportunity to do daily thresholds the normal way if the data are daily 
-# say that gchi does not yet support ozone level slicing. inputs should be surface level
 # for fwi, see if want to keep as is with envrionemtnal zones read-in then thresholds calc, or just pull thresholds file (preferred)
 # for fwi, give option to overwrite with plain threshols like in ozone
 # the prep messes up units attr. 
+# check whether base dict should be da input or ds bc spi expects da 
+# ozone level check (optional) orders by plev if lev coord then the top is the one with less nans or if no nans at surf, top is one with more ozone. opposite for ozone. show a figure in one of the papers. prob the joss one 
 
 # =================
 # !! THRESHOLDS DICTIONARY !!
@@ -51,29 +47,29 @@ hazard_thresholds = {
     "WBT": [27.4, 28.9, 30.3, 35],  # °C
     "WBGT": [29, 30.5, 32, 37],  # °C
     "UTCIhot": [26, 32, 38, 46],  # °C
-    "HWF": [0.0082, 0.016, 0.024, 0.032], # Change!!!! these are dummy values
-    "TR": [0.0082, 0.016, 0.024, 0.032], # Change!!!! these are dummy values
+    "HWF": [0.052, 0.077, 0.110, 0.173],  # fraction of year
+    "TR": [0.312, 0.532, 0.918, 0.997],  # fraction of year
     "TXC": [30, 35, 40, 45],  # °C
     "UTCIcold": [0, -13, -27, -40],  # °C
-    "TNXp": [10, 5, 2, 0.5], # unit percentile
-    "FI": [0.0082, 0.016, 0.024, 0.032], # Change!!!! these are dummy values
+    "TNXp": [10, 5, 2, 0.5],  # unit percentile
+    "FI": [0.852, 1.125, 1.579, 2.418], # FI index, unitless 
     "FWI": [12.23, 22.95, 36.83, 50],  # index
-    "HDW": [0.0082, 0.016, 0.024, 0.032], # Change!!!! these are dummy values
+    "HDW": [0.011, 0.017, 0.027, 0.041],  # HDW index, unitless 
     "O3mon": [60, 65, 70, 100],  # ug/m^3
-    "O3day": [100, 110, 120, 160],   # ug/m^3
+    "O3day": [100, 110, 120, 160],  # ug/m^3
     "PM2pt5mon": [5, 15, 25, 35],  # ug/m^3
     "PM2pt5day": [15, 37.5, 50, 75],  # ug/m^3
-    "CDD": [0.0082, 0.016, 0.024, 0.032], # Change!!!! these are dummy values
-    "VSmalaria": [0, 0.3333, 0.5833, 0.8333],  # fraction of year: marginal - endemic
-    "VSzika": [0, 0.3333, 0.5833, 0.8333],  # fraction of year: marginal - endemic
-    "VSdengueAeg": [0, 0.3333, 0.5833, 0.8333],  # fraction of year: marginal - endemic
-    "VSdengueAlb": [0, 0.3333, 0.5833, 0.8333],  # fraction of year: marginal - endemic
-    "PR1day": [90, 95, 98, 99.5], 
-    "PR5day": [90, 95, 98, 99.5], 
-    "PRXmm": [20, 30, 40, 50], # Change!!!! these are dummy values
-    "SPI": [-0.8, -1.3, -1.6, -2],  # index
-    "SPEI": [-0.8, -1.3, -1.6, -2],  # index
-    "VbrS": [0.0082, 0.016, 0.024, 0.032], # Change!!!! these are dummy values
+    "CDD": [0.86, 0.951, 0.992, 0.999], # fraction of year 
+    "VSmalaria": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
+    "VSzika": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
+    "VSdengueAeg": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
+    "VSdengueAlb": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
+    "PR1day": [90, 95, 98, 99.5], # percentile
+    "PR5day": [90, 95, 98, 99.5], # percentile
+    "PRXmm": [20, 30, 40, 50], # mm/day
+    "SPI": [-0.8, -1.3, -1.6, -2],  # index unitless
+    "SPEI": [-0.8, -1.3, -1.6, -2],  # index unitless
+    "VbrS": [0, 0.083, 0.167, 0.417],  # actual percentiles where 0, 0, 0.167, 0.417, but to differentiate L1 and L2 1 month is chosen for L2 (approx 97.2th percentile)
 }
 
 # thresholds from Table 1 Kudlackova et al 2025 (https://iopscience.iop.org/article/10.1088/1748-9326/ad97cf#erlad97cffA1)
@@ -121,6 +117,8 @@ def show_expected_ds_format():
         "mass_fraction_of_sulfate_dry_aerosol_particles_in_air": "mmrso4",
         "mass_fraction_of_sea_salt_dry_aerosol_particles_in_air": "mmrss",
         "mole_fraction_of_ozone_in_air": "o3",
+        "sea_surface_salinity": "sos",
+        "sea_surface_temperature": "tos"
     }
     
     expected_units = {
@@ -139,6 +137,8 @@ def show_expected_ds_format():
         "mmrso4": "kg kg-1",
         "mmrss": "kg kg-1",
         "o3": "mol mol-1",
+        "sos": "0.001",
+        "tos": "degC"
     }
     
     print("\nExpected input dictionary `ds_dict` format:\n")
@@ -231,7 +231,7 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
         if maxv > 43:
             print(f"WARNING: max value {maxv:.3f} unusually large for sea surface salinity (psu): check units.")
         if minv < 5:
-            print(f"WARNING: min value {minv:.3f} unusually small for sea surface salinity (psu): ensure input is wind speed (sfcWind or sqrt(u**2 + v**2)) not u or v vector. check units.")
+            print(f"WARNING: min value {minv:.3f} unusually small for sea surface salinity (psu): ensure input is sea surface salinity (0.001 or psu).")
 
     # pm2.5 aerosols
     elif units_attr == "kg kg-1":
@@ -503,7 +503,6 @@ def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="abo
         if exceedance_dir.lower() == "above": # e.g. days > 40°C
             da_count = (da > th).resample(time='1YE').sum(dim='time', skipna=True)
         elif exceedance_dir.lower() == "below": # e.g. days < 0°C (cold days)
-            thresholds = np.sort(thresholds)[::-1] # reverse dir because < thresh
             da_count = (da < th).resample(time='1YE').sum(dim='time', skipna=True)
         else:
             print(f"Exceedance direction {exceedance_dir} not recognized. Must be 'above' or 'below'")
@@ -637,11 +636,16 @@ def _assign_hazard_level(da, frac_thresholds=None):
         hazard_level = xr.zeros_like(da.isel(level=0), dtype=int)
         for i in range(da.level.size):
             hazard_level = hazard_level.where(da.isel(level=i) <= min_days_frac, other=i + 1)
+        # restore NaN where da was NaN, otherwise they are written as level 4 be da > th if th is nan 
+        hazard_level = hazard_level.where(da.notnull().any('level'))
     else:
         thresholds = np.sort(frac_thresholds)
         hazard_level = xr.zeros_like(da, dtype=int)
         for i, th in enumerate(thresholds):
             hazard_level = hazard_level.where(da <= th, other=i + 1)
+        
+        # restore NaN where da was NaN, otherwise they are written as level 4 be da > th if th is nan 
+        hazard_level = hazard_level.where(da.notnull())
 
     hazard_level.name = f"{da.name}_hazard_level"
     hazard_level.attrs["calculation_notes"] = (
@@ -651,6 +655,62 @@ def _assign_hazard_level(da, frac_thresholds=None):
 
     return xr.merge([da, hazard_level])
 
+def _get_surface(da, var):
+    """
+    Get lowest non-NaN value along vertical coordinate,
+    automatically handling direction, and return only the surface value
+    while keeping the vertical dimension (lev or plev) with the corresponding value.
+    Fallback for directionality of model level dim: If variable is ozone, surface < top, if aerosol, surface > top
+    There should be attributes ('up'/'down') to infer directionality but in practice these metadata are not always correct
+    Rather than reconstructing pressure levels with model levels, which may require additional data, just infer the direction
+    """
+
+    # cannot index below on a chunked array so compute first if chunked
+    try:
+        da = da.compute()
+    except:
+        None
+    
+    # detect vertical dimension
+    if ("lev" not in da.dims) & ("plev" not in da.dims):
+        return da 
+    vdim = next(d for d in da.dims if d in ["lev", "plev"])
+    
+    if vdim == "plev":
+        # sort descending (high pressure to low pressure, surface first)
+        da = da.sortby(vdim, ascending=False)
+    else:
+        # lev: detect surface direction using NaN pattern / max heuristic
+        sample = da.isel({vdim: [0, -1]})
+        firstlev_nan = sample.isel({vdim: 0}).isnull().sum()
+        lastlev_nan = sample.isel({vdim: -1}).isnull().sum()
+        
+        if firstlev_nan != lastlev_nan:
+            if firstlev_nan > lastlev_nan:
+                da = da.isel({vdim: slice(None, None, -1)})
+        else:
+            # fallback: lowest ozone = surface
+            firstlev_max = sample.isel({vdim: 0}).max()
+            lastlev_max = sample.isel({vdim: -1}).max()
+            if var == "o3":
+                if firstlev_max > lastlev_max:
+                    da = da.isel({vdim: slice(None, None, -1)})
+            else:
+                # aerosols greater concentration at surface
+                if firstlev_max < lastlev_max:
+                    da = da.isel({vdim: slice(None, None, -1)})
+    
+    # find first non-NaN value along vertical (surface)
+    mask = da.notnull()
+    #idx = mask[var].argmax(dim=vdim)
+    idx = mask.argmax(dim=vdim)
+    valid = mask.any(dim=vdim)
+    
+    # select surface value, keeping vertical dimension
+    surface = da.isel({vdim: idx}).where(valid)
+    
+    return surface
+
  
 # =================
 # INPUT PREPARATION
@@ -658,6 +718,12 @@ def _assign_hazard_level(da, frac_thresholds=None):
 def _regrid_xr(ds_in, regrid_to, method='bilinear'):
     regridder = xe.Regridder(ds_in, regrid_to, method=method, periodic=True, ignore_degenerate=True)
     ds_out = regridder(ds_in)
+    # restore attributes
+    for var in ds_out.data_vars:
+        ds_out[var].attrs = ds_in[var].attrs
+    ds_out.attrs = ds_in.attrs # restore global attrs
+    ds_out.attrs["regridded"] = "True"
+
     return ds_out
 
 # ds_clim_rg = _regrid_xr(ds_clim, target_grid, method='bilinear') # regrid to 1x1
@@ -921,6 +987,199 @@ def calculate_base_period_percentiles(
     print(f"Base period percentiles complete. Keys in base_dict: {list(base_dict.keys())}")
  
     return base_dict
+
+def calculate_base_period_percentiles2(
+    tas=None,
+    tasmax=None,
+    tasmin=None,
+    pr=None,
+    base_years=_DEFAULT_BASE_YEARS,
+    tas_calday_percentiles=_DEFAULT_PERCENTILES["tas_calday"],
+    pr_percentiles=_DEFAULT_PERCENTILES["pr"],
+    tasmin_percentiles=_DEFAULT_PERCENTILES["tasmin"],
+    rx5day_percentiles=_DEFAULT_PERCENTILES["rx5day"],
+    wet_day_threshold=1.0,
+):
+    base_start, base_end = int(base_years[0]), int(base_years[1])
+
+    if not any(da is not None for da in [tas, tasmax, tasmin, pr]):
+        raise ValueError("At least one of tas, tasmax, tasmin, or pr must be provided.")
+
+    def _slice_to_base(da, var_name):
+        years_in_data = da.time.dt.year
+        data_start, data_end = int(years_in_data.min()), int(years_in_data.max())
+        if base_start == _DEFAULT_BASE_YEARS[0] and base_end == _DEFAULT_BASE_YEARS[1]:
+            if data_start > base_start or data_end < base_end:
+                print(
+                    f"WARNING ({var_name}): data cover {data_start}–{data_end}, "
+                    f"which does not fully span the default base period "
+                    f"{base_start}–{base_end}. Proceeding with available years."
+                )
+        da_base = da.sel(time=da.time.dt.year.isin(range(base_start, base_end + 1)))
+        if da_base.time.size == 0:
+            raise ValueError(
+                f"{var_name}: no data found within base period {base_start}–{base_end}. "
+                f"Data cover {data_start}–{data_end}."
+            )
+        return da_base, int(da_base.time.dt.year.min()), int(da_base.time.dt.year.max())
+
+    def _base_attrs(percentile, units, var_name, actual_start, actual_end, notes):
+        return {
+            "software_version":   SOFTWARE_VERSION,
+            "base_period_start":  actual_start,
+            "base_period_end":    actual_end,
+            "base_period_source": "default" if (
+                base_start == _DEFAULT_BASE_YEARS[0]
+                and base_end == _DEFAULT_BASE_YEARS[1]
+            ) else "custom",
+            "percentile":         percentile,
+            "units":              units,
+            "variable":           var_name,
+            "calculation_notes":  notes,
+        }
+
+    def _unpack_quantiles(da_q, percentiles, key_fmt, units, var_name,
+                          actual_start, actual_end, notes_fmt):
+        """
+        Split a multi-percentile quantile result into individual DataArrays.
+        da_q has a 'quantile' dimension when multiple percentiles are requested.
+        """
+        results = {}
+        single = da_q.ndim == 0 or "quantile" not in da_q.dims
+        for p in percentiles:
+            if len(percentiles) == 1 or single:
+                da_p = da_q.drop_vars("quantile", errors="ignore")
+            else:
+                da_p = da_q.sel(quantile=p / 100.0).drop_vars("quantile")
+            key = key_fmt(p)
+            da_p.name = key
+            da_p.attrs = _base_attrs(
+                percentile=p, units=units, var_name=var_name,
+                actual_start=actual_start, actual_end=actual_end,
+                notes=notes_fmt(p),
+            )
+            results[key] = da_p
+        return results
+
+    base_dict = {}
+
+    # -----------------------------------------------------------------------
+    # tas — calendar-day percentiles (batched)
+    # -----------------------------------------------------------------------
+    if tas is not None:
+        print("Calculating tas base period percentiles...")
+        tas_base, actual_start, actual_end = _slice_to_base(
+            _check_and_convert_units(da=tas, input_var="tas", conv_type="C"), "tas"
+        )
+        # Rechunk so the full time axis is contiguous — quantile needs it
+        tas_base = tas_base.chunk({"time": -1})
+        base_dict["tas"] = tas_base
+
+        # Single grouped quantile call for all percentiles at once
+        q_vals = [p / 100.0 for p in tas_calday_percentiles]
+        tXp_all = (
+            tas_base
+            .groupby("time.dayofyear")
+            .quantile(q_vals, dim="time", skipna=True)
+        )
+        base_dict.update(_unpack_quantiles(
+            tXp_all, tas_calday_percentiles,
+            key_fmt=lambda p: f"t{int(p)}p_calday",
+            units="°C", var_name="tas",
+            actual_start=actual_start, actual_end=actual_end,
+            notes_fmt=lambda p: (
+                f"Calendar-day {p}th percentile of tas (°C). "
+                "One value per dayofyear per grid cell."
+            ),
+        ))
+
+    # -----------------------------------------------------------------------
+    # tasmax — stored for heatwave_days (no change needed, just a slice)
+    # -----------------------------------------------------------------------
+    if tasmax is not None:
+        print("Converting tasmax to °C for base period storage...")
+        tasmax_base, *_ = _slice_to_base(
+            _check_and_convert_units(da=tasmax, input_var="tasmax", conv_type="C"), "tasmax"
+        )
+        base_dict["tasmax"] = tasmax_base
+
+    # -----------------------------------------------------------------------
+    # tasmin — all-year cold-tail percentiles (batched)
+    # -----------------------------------------------------------------------
+    if tasmin is not None:
+        print("Calculating tasmin base period percentiles...")
+        tasmin_base, actual_start, actual_end = _slice_to_base(
+            _check_and_convert_units(da=tasmin, input_var="tasmin", conv_type="C"), "tasmin"
+        )
+        tasmin_base = tasmin_base.chunk({"time": -1})
+
+        q_vals = [p / 100.0 for p in tasmin_percentiles]
+        tnp_all = tasmin_base.quantile(q_vals, dim="time", skipna=True)
+        base_dict.update(_unpack_quantiles(
+            tnp_all, tasmin_percentiles,
+            key_fmt=lambda p: f"tasmin_{str(p).replace('.', 'pt')}p",
+            units="°C", var_name="tasmin",
+            actual_start=actual_start, actual_end=actual_end,
+            notes_fmt=lambda p: (
+                f"All-year {p}th percentile of tasmin (°C). One value per grid cell."
+            ),
+        ))
+
+    # -----------------------------------------------------------------------
+    # pr — wet-day percentiles + rx5day percentiles (batched)
+    # -----------------------------------------------------------------------
+    if pr is not None:
+        print("Calculating pr base period percentiles...")
+        pr_base, actual_start, actual_end = _slice_to_base(
+            _check_and_convert_units(da=pr, input_var="pr", conv_type="mm day-1"), "pr"
+        )
+        # Rechunk once for all downstream operations
+        pr_base = pr_base.chunk({"time": -1})
+
+        # Wet-day mask computed once
+        pr_wet = pr_base.where(pr_base >= wet_day_threshold)
+
+        q_vals = [p / 100.0 for p in pr_percentiles]
+        prp_all = pr_wet.quantile(q_vals, dim="time", skipna=True)
+        base_dict.update(_unpack_quantiles(
+            prp_all, pr_percentiles,
+            key_fmt=lambda p: f"pr_{str(p).replace('.', 'pt')}p",
+            units="mm day-1", var_name="pr",
+            actual_start=actual_start, actual_end=actual_end,
+            notes_fmt=lambda p: (
+                f"All-year {p}th percentile of pr on wet days "
+                f"(>= {wet_day_threshold} mm day-1). One value per grid cell."
+            ),
+        ))
+
+        # rx5day — already rechunked pr_base, no mid-graph rechunk needed
+        print("Calculating rx5day base period percentiles...")
+        annual_max_rx5 = (
+            pr_base
+            .rolling(time=5, min_periods=5)
+            .sum()
+            .groupby("time.year")
+            .max(dim="time", skipna=True)
+        )
+        # year dimension is small (~35 values); chunk fully for quantile
+        annual_max_rx5 = annual_max_rx5.chunk({"year": -1})
+
+        q_vals = [p / 100.0 for p in rx5day_percentiles]
+        rx5p_all = annual_max_rx5.quantile(q_vals, dim="year", skipna=True)
+        base_dict.update(_unpack_quantiles(
+            rx5p_all, rx5day_percentiles,
+            key_fmt=lambda p: f"rx5day_{str(p).replace('.', 'pt')}p",
+            units="mm", var_name="rx5day",
+            actual_start=actual_start, actual_end=actual_end,
+            notes_fmt=lambda p: (
+                f"All-year {p}th percentile of annual maximum 5-day accumulated "
+                f"precipitation (mm). Rolling sum uses min_periods=5 "
+                f"(no partial windows). One value per grid cell."
+            ),
+        ))
+
+    print(f"Base period percentiles complete. Keys in base_dict: {list(base_dict.keys())}")
+    return base_dict
  
 
 # =================
@@ -945,7 +1204,7 @@ def AT(ds_dict, hazard_thresholds = hazard_thresholds["AT"]):
     es_positive = 0.611 * np.exp(17.27 * TX / (TX + 237.3))
     es_negative = 0.611 * np.exp(21.87 * TX / (TX + 265.5))
     es = xr.where(TX > 0, es_positive, es_negative) # apply Tetens' equation 
-    VP = es*(RH/100) 
+    VP = es*(RH/100) # make sure this / 100 should actually be there  
     
     # Simplified apparent temperature formula
     AT = (0.92*TX) + (0.22*VP) - 1.3 # from Zhao et al., 2015
@@ -1721,13 +1980,14 @@ def TR(ds_dict, TR_thresh = 20, hazard_thresholds=hazard_thresholds["TR"]):
 # =================
 # COLD EXTREMES
 # =================
-def TNXp(ds_dict, base_dict, hazard_thresholds = hazard_thresholds["TNXp"]):
+def TNXp(ds_dict, base_dict, hazard_thresholds = hazard_thresholds["TNXp"], temp_max=15):
     '''
-    Days < Xth percentile of temperature (must be below freezing)
+    Days < Xth percentile of temperature (must be < X °C (15°C Default)) 
     '''
 
     TN = ds_dict["tasmin"]
     TN = _check_and_convert_units(da=TN, input_var="tasmin", conv_type="C") 
+    TN = TN.where(TN < temp_max)
 
     # get number of time steps in a year
     steps_per_year = _get_tsteps(TN)
@@ -2071,6 +2331,13 @@ def FWI(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, environ
     # - Model comparison: (time, lat, lon, member, model)
     """
     print("Calculating Canadian Fire Weather Index...")
+
+    # FWI does not perform well if chunked so load if chunked
+    for key, da in ds_dict.items():
+        if key in ["tasmax", "pr", "sfcWind", "hursmin", "hurs"]:
+            if da.chunks is not None:  # means it's dask-backed/chunked
+                ds_dict[key] = da.load()
+
     # import FWI mask 
     # when more than 80 % of the surface of the grid cell is flagged as bare areas, water, snow, and ice or sparsely vegetated, 
     # it is considered to be infrequent burning. Adaptation of Quilcaille et al (2023), similar to Abatzoglou et al. (2019)
@@ -2214,6 +2481,9 @@ def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, timeres="mon", mda
 
     # need additional variables for conversion, so do it in function
     O3 = ds_dict["o3"]
+
+    if ("plev" in O3.dims) or ("lev" in O3.dims):
+        O3 = _get_surface(O3, "o3")
     
     units_attr = None
     for k in O3.attrs:
@@ -2337,36 +2607,43 @@ def PM2pt5(ds_dict,  hazard_thresholds=None,timeres="mon",hazard_thresholds_dict
     SS = ds_dict["mmrss"]
     DU = ds_dict["mmrdust"]
 
+    if ("plev" in BC.dims) or ("lev" in BC.dims):
+        BC = _get_surface(BC, "mmrbc")
+        OA = _get_surface(OA, "mmroa")
+        SO4 = _get_surface(SO4, "mmrso4")
+        SS = _get_surface(SS, "mmrss")
+        DU = _get_surface(DU, "mmrdust")
+
     # thresholds are in µg m-3, so if already correct units, avoid conversion
     for da in [BC, OA, SO4, SS, DU]:
         attrs_lower = {k.lower(): v for k, v in da.attrs.items()}
         target_keys = {"unit", "units"}
         found_key = next((k for k in target_keys if k in attrs_lower), None)
-        if found_key:
-            if da[found_key] in ["µg/m^3", "µg m^-3", "µg m-3"]:
+        if found_key: 
+            if da.attrs[found_key] in ["µg/m^3", "µg m^-3", "µg m-3"]:
                 # already in correct units, just sum 
                 print(f"Detected pm2.5 input units as µg m-3. Assuming all variables have equivalent units")
                 pm2pt5 = BC + OA + SO4 + (0.25*SS) + (0.1*DU) # in mixing ratio
                 break
-        else: 
-            # if in kg kg-1, sum and convert         
-            BC = _check_and_convert_units(da=BC, input_var="mmrbc", conv_type="kg kg-1") 
-            OA = _check_and_convert_units(da=OA, input_var="mmroa", conv_type="kg kg-1") 
-            SO4 = _check_and_convert_units(da=SO4, input_var="mmrso4", conv_type="kg kg-1") 
-            SS = _check_and_convert_units(da=SS, input_var="mmrss", conv_type="kg kg-1") 
-            DU = _check_and_convert_units(da=DU, input_var="mmrdust", conv_type="kg kg-1") 
 
-            # get approx air density
-            T = ds_dict["tas"]
-            T = _check_and_convert_units(da=T, input_var="tas", conv_type="K") 
-            ps = ds_dict["ps"]
-            ps = _check_and_convert_units(da=ps, input_var="ps", conv_type="Pa") 
-            rho = ps / (287*T)
+        # if in kg kg-1, sum and convert         
+        BC = _check_and_convert_units(da=BC, input_var="mmrbc", conv_type="kg kg-1") 
+        OA = _check_and_convert_units(da=OA, input_var="mmroa", conv_type="kg kg-1") 
+        SO4 = _check_and_convert_units(da=SO4, input_var="mmrso4", conv_type="kg kg-1") 
+        SS = _check_and_convert_units(da=SS, input_var="mmrss", conv_type="kg kg-1") 
+        DU = _check_and_convert_units(da=DU, input_var="mmrdust", conv_type="kg kg-1") 
 
-            # calculate offline due to most models not having PM2.5 cmip6 diagnostic available
-            pm2pt5 = BC + OA + SO4 + (0.25*SS) + (0.1*DU) # in mixing ratio
-            # to get ug/m^3 do 1e9 mixing ratio * density 
-            pm2pt5 = (pm2pt5 * rho)*1e9
+        # get approx air density
+        T = ds_dict["tas"]
+        T = _check_and_convert_units(da=T, input_var="tas", conv_type="K") 
+        ps = ds_dict["ps"]
+        ps = _check_and_convert_units(da=ps, input_var="ps", conv_type="Pa") 
+        rho = ps / (287*T)
+
+        # calculate offline due to most models not having PM2.5 cmip6 diagnostic available
+        pm2pt5 = BC + OA + SO4 + (0.25*SS) + (0.1*DU) # in mixing ratio
+        # to get ug/m^3 do 1e9 mixing ratio * density 
+        pm2pt5 = (pm2pt5 * rho)*1e9
 
     # check if monthly or daily 
     if timeres.lower() in ["day", "daily"]:
@@ -2375,7 +2652,7 @@ def PM2pt5(ds_dict,  hazard_thresholds=None,timeres="mon",hazard_thresholds_dict
         # daily data 
         pm2pt5 = pm2pt5.resample(time="1D").mean()
         # fraction of year pm2.5 concentration > daily thresholds
-        pm2pt5_levels = _annual_exceedance_frac(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="pm2pt5")
+        pm2pt5_levels = _annual_exceedance_frac(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="PM2pt5")
         pm2pt5_levels = _assign_hazard_level(pm2pt5_levels)
     elif timeres.lower() in ["mon", "monthly"]:
         # if user passes custom thresholds, use them. otherwise pull from GCHI defaults
@@ -2383,7 +2660,7 @@ def PM2pt5(ds_dict,  hazard_thresholds=None,timeres="mon",hazard_thresholds_dict
         # monthly data 
         pm2pt5 = pm2pt5.resample(time="1ME").mean()
         # If the annual average exceeds the threshold, count # of months. else, no exceedance 
-        pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="pm2pt5")
+        pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="PM2pt5")
         pm2pt5_levels = _assign_hazard_level(pm2pt5_levels)
     else:
         steps_per_year = _get_tsteps(pm2pt5)
@@ -2393,7 +2670,7 @@ def PM2pt5(ds_dict,  hazard_thresholds=None,timeres="mon",hazard_thresholds_dict
             # if user passes custom thresholds, use them. otherwise pull from GCHI defaults
             hazard_thresholds = hazard_thresholds if hazard_thresholds is not None else hazard_thresholds_dict["PM2pt5day"]
             # fraction of year o3 concentration > daily mda8 thresholds
-            pm2pt5_levels = _annual_exceedance_frac(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="pm2pt5")
+            pm2pt5_levels = _annual_exceedance_frac(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="PM2pt5")
             pm2pt5_levels = _assign_hazard_level(pm2pt5_levels)
             res_detected = "daily"
         elif (steps_per_year.max(["time", "lat", "lon"]) > 1) & (steps_per_year.mean(["time", "lat", "lon"]) <= 12):
@@ -2402,7 +2679,7 @@ def PM2pt5(ds_dict,  hazard_thresholds=None,timeres="mon",hazard_thresholds_dict
              # if user passes custom thresholds, use them. otherwise pull from GCHI defaults
             hazard_thresholds = hazard_thresholds if hazard_thresholds is not None else hazard_thresholds_dict["PM2pt5mon"]
             # If the annual average exceeds the threshold, count # of months. else, no exceedance 
-            pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="pm2pt5")
+            pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="PM2pt5")
             pm2pt5_levels = _assign_hazard_level(pm2pt5_levels)
             res_detected = "monthly"
         else:
@@ -2507,7 +2784,7 @@ def SPI(base_dict, ds_dict, timescale=6, hazard_thresholds = hazard_thresholds["
     return SPI_levels
 
 
-def spei(base_dict, ds_dict, timescale=6, hazard_thresholds = hazard_thresholds["SPEI"]):
+def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds = hazard_thresholds["SPEI"]):
     """
     Standardized Precipitation-Evapotranspiration Index (SPEI).
     Calculates annual month counts for specific USDM drought categories 
@@ -2591,14 +2868,19 @@ def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file = None, hazard_thresh
     else: 
         print("NEED TO IMPLEMENET logic for cloud mask pull")
 
-    T = ds_dict["tas"].where(VBD_mask)
+    T = ds_dict["tas"]
     T = _check_and_convert_units(da=T, input_var="tas", conv_type="C") 
     T = T.resample(time="1ME").mean()
 
     VSmalaria = T.where((T >= T_range[0]) & (T <= T_range[1]))
+    VSmalaria = VSmalaria.resample(time="1YE").count()
+    VSmalaria = VSmalaria.where(VBD_mask) # mask arid regions 
+
+    # get number of time steps in a year
+    steps_per_year = _get_tsteps(T)
     
-    VSmalaria_levels = _annual_exceedance_frac(VSmalaria, hazard_thresholds=hazard_thresholds, var_name="VSmalaria")
-    VSmalaria_levels = _assign_hazard_level(VSmalaria_levels)
+    VSmalaria_levels = _ann_frac(VSmalaria, steps_per_year).rename("VSmalaria")
+    VSmalaria_levels = _assign_hazard_level(VSmalaria_levels, frac_thresholds=hazard_thresholds)
     
     return VSmalaria_levels
 
@@ -2615,14 +2897,19 @@ def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file=None, hazard_thresholds=ha
     else: 
         print("NEED TO IMPLEMENET logic for cloud mask pull")
 
-    T = ds_dict["tas"].where(VBD_mask)
+    T = ds_dict["tas"]
     T = _check_and_convert_units(da=T, input_var="tas", conv_type="C") 
     T = T.resample(time="1ME").mean()
 
     VSzika = T.where((T >= T_range[0]) & (T <= T_range[1]))
+    VSzika = VSzika.resample(time="1YE").count()
+    VSzika = VSzika.where(VBD_mask) # mask arid regions 
+
+    # get number of time steps in a year
+    steps_per_year = _get_tsteps(T)
     
-    VSzika_levels = _annual_exceedance_frac(VSzika, hazard_thresholds=hazard_thresholds, var_name="VSzika")
-    VSzika_levels = _assign_hazard_level(VSzika_levels)
+    VSzika_levels = _ann_frac(VSzika, steps_per_year).rename("VSzika")
+    VSzika_levels = _assign_hazard_level(VSzika_levels, frac_thresholds=hazard_thresholds)
     
     return VSzika_levels
 
@@ -2640,14 +2927,19 @@ def VSdengueAeg(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, hazard_thresh
     else: 
         print("NEED TO IMPLEMENET logic for cloud mask pull")
 
-    T = ds_dict["tas"].where(VBD_mask)
+    T = ds_dict["tas"]
     T = _check_and_convert_units(da=T, input_var="tas", conv_type="C") 
     T = T.resample(time="1ME").mean()
     
     VSdengueAeg = T.where((T >= T_range[0]) & (T <= T_range[1]))
+    VSdengueAeg = VSdengueAeg.resample(time="1YE").count()
+    VSdengueAeg = VSdengueAeg.where(VBD_mask) # mask arid regions 
+
+    # get number of time steps in a year
+    steps_per_year = _get_tsteps(T)
     
-    VSdengueAeg_levels = _annual_exceedance_frac(VSdengueAeg, hazard_thresholds=hazard_thresholds, var_name="VSdengueAeg")
-    VSdengueAeg_levels = _assign_hazard_level(VSdengueAeg_levels)
+    VSdengueAeg_levels = _ann_frac(VSdengueAeg, steps_per_year).rename("VSdengueAeg")
+    VSdengueAeg_levels = _assign_hazard_level(VSdengueAeg_levels, frac_thresholds=hazard_thresholds)
     
     return VSdengueAeg_levels
 
@@ -2666,23 +2958,30 @@ def VSdengueAlb(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, hazard_threshol
     else: 
         print("NEED TO IMPLEMENET logic for cloud mask pull")
 
-    T = ds_dict["tas"].where(VBD_mask)
+    T = ds_dict["tas"]
     T = _check_and_convert_units(da=T, input_var="tas", conv_type="C") 
     T = T.resample(time="1ME").mean()
     
     VSdengueAlb = T.where((T >= T_range[0]) & (T <= T_range[1]))
+    VSdengueAlb = VSdengueAlb.resample(time="1YE").count()
+    VSdengueAlb = VSdengueAlb.where(VBD_mask) # mask arid regions 
+
+    # get number of time steps in a year
+    steps_per_year = _get_tsteps(T)
     
-    VSdengueAlb_levels = _annual_exceedance_frac(VSdengueAlb, hazard_thresholds=hazard_thresholds, var_name="VSdengueAlb")
-    VSdengueAlb_levels = _assign_hazard_level(VSdengueAlb_levels)
+    VSdengueAlb_levels = _ann_frac(VSdengueAlb, steps_per_year).rename("VSdengueAlb")
+    VSdengueAlb_levels = _assign_hazard_level(VSdengueAlb_levels, frac_thresholds=hazard_thresholds)
     
     return VSdengueAlb_levels
 
-
-def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, hazard_thresholds=hazard_thresholds["VbrS"]):
+def VbrS(ds_dict, salinity_max=28, SST_min=18, hazard_thresholds=hazard_thresholds["VbrS"]):
     """
     Vibrio bacteria suitability (coastal areas).
     Edit this calculation.
-    from Trinanes et al. 2021
+    from Trinanes et al. 2021  
+    Trinanes uses a threshold of < 30km for coast, but model grid sizes exceed than and 
+    salinity is unlikely to be lower than 28 psu in non-coastal areas  
+    However, if a user is interested in a coast mask, it can be provided by G-CHI creators at request 
     """
     print("Calculating vibrio_suitability...")
     
@@ -2691,17 +2990,6 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, hazard_thre
     SST = _check_and_convert_units(da=SST, input_var="tos", conv_type="C") 
     SSS = ds_dict["sos"] 
     SSS = _check_and_convert_units(da=SSS, input_var="sos", conv_type="psu") # convert to PSU (actually 1 ppt might == 1 psu)
-
-    # only assess grid cells within 30km of coast
-    # since climate models have a relatively coarse grid, 1 grid cell from coast will be the best you can get 
-    # If finer resolution, a 30km grid will be doable. maybe allow a kwarg 
-    # pay attention to grid types. gr not same as gn. gr better maybe? yes i think
-    # NOT DONE  
-    # !!!!! Note to self: implement logic to pull from cloud  !!!
-    if coast_mask_file is not None:
-        coast_mask = xr.open_dataset(coast_mask_file).coastline_mask # True if 
-    else: 
-        print("NEED TO IMPLEMENET logic for cloud mask pull")
 
     SST = SST.where(coast_mask)
     SSS = SSS.where(coast_mask)
