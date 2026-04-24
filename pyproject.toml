@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gchi"
+version = "0.0.0"
+description = "Global Climate Health Index — climate-based threats to human health"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "xarray",
+    "pandas",
+    "scipy",
+    "numba",
+    "xesmf"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gchi*"]
