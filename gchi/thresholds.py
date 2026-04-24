@@ -20,7 +20,7 @@ hazard_thresholds = {
     "O3day": [100, 110, 120, 160],  # ug/m^3
     "PM2pt5mon": [5, 15, 25, 35],  # ug/m^3
     "PM2pt5day": [15, 37.5, 50, 75],  # ug/m^3
-    "CDD": [0.86, 0.951, 0.992, 0.999], # fraction of year 
+    "CDD": [0.805, 0.893, 0.964, 0.997], # fraction of year 
     "VSmalaria": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
     "VSzika": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
     "VSdengueAeg": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
