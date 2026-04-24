@@ -257,9 +257,9 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
 
 
 def _get_tsteps(da):
-    """count time steps per year — for ann_frac output"""
+    """count time steps per year — returns resampled annual series to preserve time dim"""
     try:
-        steps_per_year = xr.ones_like(da).groupby("time.year").count() # count time steps per year at each grid cell (include nans)
+        steps_per_year = da.resample(time="1YE").count(dim="time")
         steps_per_year.attrs["units"] = "time steps yr-1"
     except Exception:
         steps_per_year = 365
@@ -268,8 +268,8 @@ def _get_tsteps(da):
 
 
 def _ann_frac(da, steps_per_year):
-    """convert annual counts to fraction of year"""
-    return da.groupby('time.year') / steps_per_year
+    """convert annual counts to fraction of year -- preserves time dimension"""
+    return da / steps_per_year
 
 
 def _nan_mask(da):
@@ -294,8 +294,7 @@ def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="abo
         thresholds = np.sort(hazard_thresholds)
 
     steps_per_year = _get_tsteps(da)
-    
-    # nan mask to reapply later after resample sums nans as 0 
+    # compute before any resampling so land/ocean NaNs are captured
     nan_mask = _nan_mask(da)
 
     da_list = []
@@ -310,7 +309,7 @@ def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="abo
         da_list.append(da_count)
 
     da_exceed = xr.concat(da_list, dim='level')
-    da_exceed = da_exceed.where(~nan_mask)  # restore NaNs lost in resample
+    da_exceed = _apply_nan_mask(da_exceed, nan_mask)
     da_exceed = da_exceed.assign_coords(level=np.arange(1, len(thresholds) + 1))
     da_exceed.attrs['level_values'] = thresholds.tolist()
     da_exceed = _ann_frac(da_exceed, steps_per_year).rename(var_name)
@@ -333,6 +332,7 @@ def _annual_exceedance_frac_aq(da, hazard_thresholds, var_name, exceedance_dir="
         thresholds = np.sort(hazard_thresholds)
 
     steps_per_year = _get_tsteps(da)
+    # compute before any resampling so land/ocean NaNs are captured
     all_nan_mask = _nan_mask(da)
     da_annual_mean = da.resample(time='1YE').mean(dim='time')
 
@@ -384,16 +384,16 @@ def _annual_exceedance_frac_fwi(da_fwi, da_zones, fwi_thresholds, var_name='FWI'
         coords={'lat': da_zones.lat, 'lon': da_zones.lon, 'level': [1, 2, 3, 4]},
     )
 
-    nan_mask = _nan_mask(da_fwi)
-
     da_list = []
     for lvl in [1, 2, 3, 4]:
         th = thresh_da.sel(level=lvl)
         da_count = (da_fwi > th).resample(time='1YE').sum('time')
         da_list.append(da_count)
 
+    # computed before resampling above
+    nan_mask = _nan_mask(da_fwi)
     da_exceed = xr.concat(da_list, dim='level').assign_coords(level=[1, 2, 3, 4])
-    da_exceed = da_exceed.where(~nan_mask)  # restore NaNs lost in resample
+    da_exceed = _apply_nan_mask(da_exceed, nan_mask)
 
     steps_per_year = _get_tsteps(da_fwi)
     da_exceed = _ann_frac(da_exceed, steps_per_year).rename(var_name)
@@ -434,7 +434,7 @@ def _assign_hazard_level(da, frac_thresholds=None):
         "hazard level 1–4: highest threshold crossed per year per grid cell. 0 = no threshold crossed."
     )
 
-    return xr.merge([da, hazard_level], compat='override')
+    return xr.merge([da, hazard_level], compat="override")
 
 
 def _get_surface(da, var):
@@ -495,7 +495,6 @@ def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
     """regrid ds_in to the target grid"""
     regridder = xe.Regridder(ds_in, regrid_to, method=method, periodic=True, ignore_degenerate=True)
     ds_out = regridder(ds_in)
-
     if isinstance(ds_out, xr.DataArray):
         ds_out.name = name
         ds_in.name = name
@@ -510,5 +509,4 @@ def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
             ds_out[var].attrs = ds_in[var].attrs
         ds_out.attrs = ds_in.attrs
         ds_out.attrs["regridded"] = "True"
-        
     return ds_out

@@ -13,7 +13,7 @@ _DEFAULT_PERCENTILES = {
     "tas_calday":  [90],               # calendar-day percentile
     "pr":          [90, 95, 98, 99.5], # all-year wet-day percentiles
     "tasmin":      [10, 5, 2, 0.5],    # all-year cold-tail percentiles
-    "rx5day":      [90, 95, 98, 99.5], # annual 5-day max precip percentiles
+    "pr5day":      [90, 95, 98, 99.5], # all 5-day rolling sum percentiles (wet windows only)
 }
 
 
@@ -242,7 +242,7 @@ def calculate_base_period_percentiles(
     tas_calday_percentiles=_DEFAULT_PERCENTILES["tas_calday"],
     pr_percentiles=_DEFAULT_PERCENTILES["pr"],
     tasmin_percentiles=_DEFAULT_PERCENTILES["tasmin"],
-    rx5day_percentiles=_DEFAULT_PERCENTILES["rx5day"],
+    pr5day_percentiles=_DEFAULT_PERCENTILES["pr5day"],
     wet_day_threshold=1.0,
 ):
     """
@@ -270,8 +270,8 @@ def calculate_base_period_percentiles(
         All-year wet-day percentile(s) for pr. Default: [90, 95, 98, 99.5].
     tasmin_percentiles : list of float
         All-year cold-tail percentile(s) for tasmin. Default: [10, 5, 2, 0.5].
-    rx5day_percentiles : list of float
-        Percentile(s) of annual max 5-day pr. Default: [90, 95, 98, 99.5].
+    pr5day_percentiles : list of float
+        Percentile(s) of all 5-day rolling sums (wet windows). Default: [90, 95, 98, 99.5].
     wet_day_threshold : float
         Minimum pr (mm day-1) to count as a wet day. Default: 1.0.
 
@@ -393,41 +393,40 @@ def calculate_base_period_percentiles(
         pr_base = pr_base.chunk({"time": -1})
         base_dict["pr"] = pr_base  # stored for SPI/SPEI
 
-        pr_wet = pr_base.where(pr_base >= wet_day_threshold)
+        # pr percentile on ALL days (including dry days as 0)
+        # clean and consistent -- no wet day fraction needed for level assignment
         q_vals = [p / 100.0 for p in pr_percentiles]
-        prp_all = pr_wet.quantile(q_vals, dim="time", skipna=True)
+        prp_all = pr_base.quantile(q_vals, dim="time", skipna=True)
         base_dict.update(_unpack_quantiles(
             prp_all, pr_percentiles,
             key_fmt=lambda p: f"pr_{str(p).replace('.', 'pt')}p",
             units="mm day-1", var_name="pr",
             actual_start=actual_start, actual_end=actual_end,
             notes_fmt=lambda p: (
-                f"all-year {p}th percentile of pr on wet days "
-                f"(>= {wet_day_threshold} mm day-1). one value per grid cell."
+                f"all-year {p}th percentile of pr (all days including dry). one value per grid cell."
             ),
         ))
 
-        # rx5day -- uses the already-rechunked pr_base
-        print("calculating rx5day base period percentiles...")
-        annual_max_rx5 = (
+        # pr5day -- percentile of all 5-day rolling sums on wet windows
+        # consistent with PR1day: uses (100-p)/100 fraction for level assignment
+        print("calculating pr5day base period percentiles...")
+        pr5day_rolling = (
             pr_base
             .rolling(time=5, min_periods=5)
             .sum()
-            .groupby("time.year")
-            .max(dim="time", skipna=True)
+            .where(lambda x: x > 5)  # wet windows only -- approx 1mm/day avg over 5 days
         )
-        annual_max_rx5 = annual_max_rx5.chunk({"year": -1})
 
-        q_vals = [p / 100.0 for p in rx5day_percentiles]
-        rx5p_all = annual_max_rx5.quantile(q_vals, dim="year", skipna=True)
+        q_vals = [p / 100.0 for p in pr5day_percentiles]
+        pr5p_all = pr5day_rolling.quantile(q_vals, dim="time", skipna=True)
         base_dict.update(_unpack_quantiles(
-            rx5p_all, rx5day_percentiles,
-            key_fmt=lambda p: f"rx5day_{str(p).replace('.', 'pt')}p",
-            units="mm", var_name="rx5day",
+            pr5p_all, pr5day_percentiles,
+            key_fmt=lambda p: f"pr5day_{str(p).replace('.', 'pt')}p",
+            units="mm", var_name="pr5day",
             actual_start=actual_start, actual_end=actual_end,
             notes_fmt=lambda p: (
-                f"all-year {p}th percentile of annual maximum 5-day accumulated "
-                f"precipitation (mm). rolling sum uses min_periods=5. one value per grid cell."
+                f"all-year {p}th percentile of 5-day rolling precipitation sums "
+                f"(wet windows only). one value per grid cell."
             ),
         ))
 
