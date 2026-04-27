@@ -2,3 +2,4 @@
 *_checkpoints
 .DS_Store
 *.nc
+__pycache__
