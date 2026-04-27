@@ -11,9 +11,9 @@ import xarray as xr
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _annual_exceedance_frac_fwi,
-    _assign_hazard_level, _tetens_sat_vapor_pressure,
+    _assign_severity_level, _tetens_sat_vapor_pressure, _add_metric_metadata,
 )
-from .thresholds import hazard_thresholds as _default_thresholds, fwi_thresholds
+from .thresholds import severity_thresholds as _default_thresholds, fwi_thresholds
 
 
 def _fmi_values(ds_dict):
@@ -48,7 +48,7 @@ def _load_fire_mask(fire_mask_file):
     return None
 
 
-def FI(ds_dict, hazard_thresholds=None, fire_mask_file=None):
+def FI(ds_dict, severity_thresholds=None, fire_mask_file=None):
     """
     Fire danger index exceedance levels.
     Call fi_values() to get raw FI without level assignment.
@@ -59,14 +59,15 @@ def FI(ds_dict, hazard_thresholds=None, fire_mask_file=None):
         path to infrequent burning mask file. cells where burning is infrequent
         are masked out before exceedance counting.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["FI"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["FI"]
     FI_val = fi_values(ds_dict, fire_mask_file=fire_mask_file)
     fire_mask = _load_fire_mask(fire_mask_file)
     if fire_mask is not None:
         FI_val = FI_val.where(~fire_mask)
-    FI_levels = _annual_exceedance_frac(FI_val, hazard_thresholds=hazard_thresholds, var_name="FI")
-    return _assign_hazard_level(FI_levels)
+    FI_levels = _annual_exceedance_frac(FI_val, severity_thresholds=severity_thresholds, var_name="FI")
+    result = _assign_severity_level(FI_levels)
+    return _add_metric_metadata(result, "FI", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Sharples et al. 2009 fire danger index. fire_mask_file={fire_mask_file}")
 
 
 def hdw_values(ds_dict, fire_mask_file=None):
@@ -90,7 +91,7 @@ def hdw_values(ds_dict, fire_mask_file=None):
     return (U * VPD).where(~fwi_mask)
 
 
-def HDW(ds_dict, hazard_thresholds=None, fire_mask_file=None):
+def HDW(ds_dict, severity_thresholds=None, fire_mask_file=None):
     """
     HDW exceedance levels.
     Call hdw_values() to get raw HDW without level assignment.
@@ -101,14 +102,15 @@ def HDW(ds_dict, hazard_thresholds=None, fire_mask_file=None):
         path to infrequent burning mask file. cells where burning is infrequent
         are masked out before exceedance counting.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["HDW"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["HDW"]
     HDW_val = hdw_values(ds_dict, fire_mask_file=fire_mask_file)
     fire_mask = _load_fire_mask(fire_mask_file)
     if fire_mask is not None:
         HDW_val = HDW_val.where(~fire_mask)
-    HDW_levels = _annual_exceedance_frac(HDW_val, hazard_thresholds=hazard_thresholds, var_name="HDW")
-    return _assign_hazard_level(HDW_levels)
+    HDW_levels = _annual_exceedance_frac(HDW_val, severity_thresholds=severity_thresholds, var_name="HDW")
+    result = _assign_severity_level(HDW_levels)
+    return _add_metric_metadata(result, "HDW", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Srock et al. 2018 hot-dry-windy index. fire_mask_file={fire_mask_file}")
 
 
 # =================
@@ -365,4 +367,5 @@ def FWI(ds_dict, use_hursmin=True, init_values=None,
     environmental_zones = xr.open_dataset(environmental_zone_file).environmental_zone
 
     FWI_levels = _annual_exceedance_frac_fwi(fwi, environmental_zones, fwi_thresholds)
-    return _assign_hazard_level(FWI_levels)
+    result = _assign_severity_level(FWI_levels)
+    return _add_metric_metadata(result, "FWI", ds_dict, units="fraction of year", notes="Canadian FWI. spatially varying thresholds from Kudlackova et al. 2025 environmental zones.")

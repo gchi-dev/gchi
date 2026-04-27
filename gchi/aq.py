@@ -7,16 +7,16 @@ input data can be daily or monthly -- resolution is detected automatically.
 daily data is averaged to monthly before exceedance counting. threshold set
 (O3day vs O3mon, PM2pt5day vs PM2pt5mon) is chosen based on the raw input
 resolution, since daily data implies a different exposure context than monthly.
-users can always override with a custom hazard_thresholds list.
+users can always override with a custom severity_thresholds list.
 """
 
 import xarray as xr
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _annual_exceedance_frac_aq,
-    _assign_hazard_level, _get_surface, _get_tsteps,
+    _assign_severity_level, _get_surface, _get_tsteps, _add_metric_metadata,
 )
-from .thresholds import hazard_thresholds as _default_thresholds
+from .thresholds import severity_thresholds as _default_thresholds
 
 
 def _detect_daily(da):
@@ -69,7 +69,7 @@ def o3_values(ds_dict):
     return O3
 
 
-def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, mda8_scale_varname="o3"):
+def O3(ds_dict, severity_thresholds=None, mda8_scale_file=None, mda8_scale_varname="o3"):
     """
     Surface ozone exceedance levels.
     Converts from CMIP6 mol mol-1 to ug m-3, scales to MDA8, then counts
@@ -77,7 +77,7 @@ def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, mda8_scale_varname
 
     Input resolution (daily or monthly) is detected automatically and used to
     pick the appropriate default threshold set (O3day vs O3mon). Override with
-    a custom hazard_thresholds list if needed.
+    a custom severity_thresholds list if needed.
 
     Note: input should be surface level only. use prepare_inputs or pass
     surface level directly -- gchi does not slice levels inside this function.
@@ -85,7 +85,7 @@ def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, mda8_scale_varname
     Parameters
     ----------
     ds_dict : dict
-    hazard_thresholds : list, optional
+    severity_thresholds : list, optional
         override default thresholds. if None, picked automatically based on
         detected input resolution (O3day for daily input, O3mon for monthly).
     mda8_scale_file : str, optional
@@ -104,8 +104,8 @@ def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, mda8_scale_varname
     else:
         print("  O3: detected monthly input -- using O3mon thresholds")
 
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["O3day"] if is_daily else _default_thresholds["O3mon"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["O3day"] if is_daily else _default_thresholds["O3mon"]
 
     # always collapse to monthly
     O3_val = O3_val.resample(time="1ME").mean().load()
@@ -118,8 +118,9 @@ def O3(ds_dict, hazard_thresholds=None, mda8_scale_file=None, mda8_scale_varname
 
     # conditional exceedance -- only counts months in years where annual mean
     # also exceeds the threshold, avoids noise from borderline years
-    O3_levels = _annual_exceedance_frac_aq(O3_val, hazard_thresholds=hazard_thresholds, var_name="O3")
-    return _assign_hazard_level(O3_levels)
+    O3_levels = _annual_exceedance_frac_aq(O3_val, severity_thresholds=severity_thresholds, var_name="O3")
+    result = _assign_severity_level(O3_levels)
+    return _add_metric_metadata(result, "O3", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"input resolution: {'daily' if is_daily else 'monthly'}. resampled to monthly. mda8_scale_file={mda8_scale_file}.")
 
 
 def pm25_values(ds_dict):
@@ -163,19 +164,19 @@ def pm25_values(ds_dict):
     return (pm2pt5 * rho) * 1e9  # kg kg-1 * kg m-3 -> ug m-3
 
 
-def PM2pt5(ds_dict, hazard_thresholds=None):
+def PM2pt5(ds_dict, severity_thresholds=None):
     """
     PM2.5 exceedance levels. Always resamples to monthly internally.
     Call pm25_values() to get raw PM2.5 concentration without level assignment.
 
     Input resolution (daily or monthly) is detected automatically and used to
     pick the appropriate default threshold set (PM2pt5day vs PM2pt5mon).
-    Override with a custom hazard_thresholds list if needed.
+    Override with a custom severity_thresholds list if needed.
 
     Parameters
     ----------
     ds_dict : dict
-    hazard_thresholds : list, optional
+    severity_thresholds : list, optional
         override default thresholds. if None, picked automatically based on
         detected input resolution.
     """
@@ -188,11 +189,12 @@ def PM2pt5(ds_dict, hazard_thresholds=None):
     else:
         print("  PM2pt5: detected monthly input -- using PM2pt5mon thresholds")
 
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["PM2pt5day"] if is_daily else _default_thresholds["PM2pt5mon"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["PM2pt5day"] if is_daily else _default_thresholds["PM2pt5mon"]
 
     # always collapse to monthly
     pm2pt5 = pm2pt5.resample(time="1ME").mean()
 
-    pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, hazard_thresholds=hazard_thresholds, var_name="PM2pt5")
-    return _assign_hazard_level(pm2pt5_levels)
+    pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, severity_thresholds=severity_thresholds, var_name="PM2pt5")
+    result = _assign_severity_level(pm2pt5_levels)
+    return _add_metric_metadata(result, "PM2pt5", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"input resolution: {'daily' if is_daily else 'monthly'}. resampled to monthly. BC+OA+SO4+0.25*SS+0.1*DU.")

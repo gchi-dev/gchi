@@ -1,7 +1,7 @@
 # =================
 # !! THRESHOLDS DICTIONARY !!
 # =================
-hazard_thresholds = {
+severity_thresholds = {
     "AT": [28, 32, 35, 40],  # °C
     "HI": [27, 32, 41, 54],  # °C
     "Hu": [30, 40, 45, 54],  # °C

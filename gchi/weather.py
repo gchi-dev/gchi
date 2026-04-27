@@ -9,10 +9,10 @@ import numpy as np
 import xarray as xr
 
 from ._core import (
-    _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level,
-    _get_tsteps, _ann_frac, _nan_mask
+    _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level,
+    _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata
 )
-from .thresholds import hazard_thresholds as _default_thresholds
+from .thresholds import severity_thresholds as _default_thresholds
 
 
 def pr_values(ds_dict):
@@ -20,16 +20,17 @@ def pr_values(ds_dict):
     return _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
 
 
-def PRXmm(ds_dict, hazard_thresholds=None):
+def PRXmm(ds_dict, severity_thresholds=None):
     """
     Fraction of year where daily precipitation > X mm.
     Default thresholds: 20, 30, 40, 50 mm.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["PRXmm"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["PRXmm"]
     PR = pr_values(ds_dict)
-    PRXmm_levels = _annual_exceedance_frac(PR, hazard_thresholds=hazard_thresholds, var_name="PRXmm")
-    return _assign_hazard_level(PRXmm_levels)
+    PRXmm_levels = _annual_exceedance_frac(PR, severity_thresholds=severity_thresholds, var_name="PRXmm")
+    result = _assign_severity_level(PRXmm_levels)
+    return _add_metric_metadata(result, "PRXmm", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
 def PR1day(ds_dict, base_dict, percentile_thresholds=None):
@@ -113,18 +114,19 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
 
     # level assignment: year gets level N if it exceeds the Nth percentile threshold
     # more than (100-p)/100 of the year. highest level exceeded wins.
-    hazard_level = xr.zeros_like(PR1day_val.isel(level=0).drop_vars("level"), dtype=int)
+    severity_level = xr.zeros_like(PR1day_val.isel(level=0).drop_vars("level"), dtype=int)
     for i, p in enumerate(pr_base_percentile_vals):
         frac_thresh = (100 - p) / 100
         level_coord = n - i  # 99.5th→4, 98th→3, 95th→2, 90th→1
         exceeds = PR1day_val.sel(level=level_coord) > frac_thresh
-        hazard_level = hazard_level.where(~exceeds, other=level_coord)
+        severity_level = severity_level.where(~exceeds, other=level_coord)
 
-    hazard_level = hazard_level.where(PR1day_val.notnull().any("level"))
-    hazard_level.name = "PR1day_hazard_level"
-    PR1day_val = xr.merge([PR1day_val, hazard_level], compat="override")
+    severity_level = severity_level.where(PR1day_val.notnull().any("level"))
+    severity_level.name = "PR1day_severity_level"
+    PR1day_val = xr.merge([PR1day_val, severity_level], compat="override")
     PR1day_val = PR1day_val.sortby("level")  # sort ascending so level 1=90th, level 4=99.5th
     PR1day_val = PR1day_val.where(~nanmask)
+    PR1day_val = _add_metric_metadata(PR1day_val, "PR1day", ds_dict, severity_thresholds=percentile_thresholds, units="fraction of year", notes="percentile thresholds from base period all-day distribution. level N: exceedance > (100-p)/100 of year.")
     PR1day_val.attrs['level_thresholds'] = [
         {"level": n - i, "percentile": pr_base_percentile_vals[i],
          "exceedance_frac_threshold": (100 - pr_base_percentile_vals[i]) / 100,
@@ -217,18 +219,19 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     PR5day_val = PR5day_val.assign_coords(level=np.arange(n, 0, -1))  # [4,3,2,1]
     PR5day_val = (PR5day_val / steps_per_year).rename("PR5day")
 
-    hazard_level = xr.zeros_like(PR5day_val.isel(level=0).drop_vars("level"), dtype=int)
+    severity_level = xr.zeros_like(PR5day_val.isel(level=0).drop_vars("level"), dtype=int)
     for i, p in enumerate(pr5day_base_percentile_vals):
         frac_thresh = (100 - p) / 100
         level_coord = n - i  # 99.5th→4, 98th→3, 95th→2, 90th→1
         exceeds = PR5day_val.sel(level=level_coord) > frac_thresh
-        hazard_level = hazard_level.where(~exceeds, other=level_coord)
+        severity_level = severity_level.where(~exceeds, other=level_coord)
 
-    hazard_level = hazard_level.where(PR5day_val.notnull().any("level"))
-    hazard_level.name = "PR5day_hazard_level"
-    PR5day_val = xr.merge([PR5day_val, hazard_level], compat="override")
+    severity_level = severity_level.where(PR5day_val.notnull().any("level"))
+    severity_level.name = "PR5day_severity_level"
+    PR5day_val = xr.merge([PR5day_val, severity_level], compat="override")
     PR5day_val = PR5day_val.sortby("level")  # sort ascending so level 1=90th, level 4=99.5th
     PR5day_val = PR5day_val.where(~nanmask)
+    PR5day_val = _add_metric_metadata(PR5day_val, "PR5day", ds_dict, severity_thresholds=percentile_thresholds, units="fraction of year", notes="percentile thresholds from base period 5-day rolling sums (wet windows > 5mm). level N: exceedance > (100-p)/100 of year.")
     PR5day_val.attrs['level_thresholds'] = [
         {"level": n - i, "percentile": pr5day_base_percentile_vals[i],
          "exceedance_frac_threshold": (100 - pr5day_base_percentile_vals[i]) / 100,

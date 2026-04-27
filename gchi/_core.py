@@ -276,22 +276,26 @@ def _nan_mask(da):
     """True where ALL timesteps in a year are NaN — used to restore NaNs after resample"""
     return da.isnull().resample(time='1YE').all(dim='time')
 
+def _apply_nan_mask(da_resampled, nan_mask):
+    """restore NaNs after resampling — nan_mask must be computed from pre-resample data"""
+    return da_resampled.where(~nan_mask)
 
-def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="above"):
+
+def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="above"):
     """
     Count annual days exceeding each threshold, return as fraction of year.
 
     da : xr.DataArray with 'time' dimension
-    hazard_thresholds : list of threshold values (will be sorted)
+    severity_thresholds : list of threshold values (will be sorted)
     var_name : output DataArray name
     exceedance_dir : 'above' (da > th) or 'below' (da < th)
 
     Returns DataArray with dims ('time', 'level', ...) and 'level_values' attr
     """
     if exceedance_dir.lower() == "below":
-        thresholds = np.sort(hazard_thresholds)[::-1]
+        thresholds = np.sort(severity_thresholds)[::-1]
     else:
-        thresholds = np.sort(hazard_thresholds)
+        thresholds = np.sort(severity_thresholds)
 
     steps_per_year = _get_tsteps(da)
     # compute before any resampling so land/ocean NaNs are captured
@@ -317,19 +321,19 @@ def _annual_exceedance_frac(da, hazard_thresholds, var_name, exceedance_dir="abo
     return da_exceed
 
 
-def _annual_exceedance_frac_aq(da, hazard_thresholds, var_name, exceedance_dir="above"):
+def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir="above"):
     """
     Conditional annual exceedance for air quality: only counts exceedances in years where
     the annual average itself crosses the threshold. Otherwise count = 0.
 
     da : xr.DataArray with 'time' dimension
-    hazard_thresholds : list of threshold values
+    severity_thresholds : list of threshold values
     var_name : output DataArray name
     """
     if exceedance_dir.lower() == "below":
-        thresholds = np.sort(hazard_thresholds)[::-1]
+        thresholds = np.sort(severity_thresholds)[::-1]
     else:
-        thresholds = np.sort(hazard_thresholds)
+        thresholds = np.sort(severity_thresholds)
 
     steps_per_year = _get_tsteps(da)
     # compute before any resampling so land/ocean NaNs are captured
@@ -402,9 +406,9 @@ def _annual_exceedance_frac_fwi(da_fwi, da_zones, fwi_thresholds, var_name='FWI'
     return da_exceed
 
 
-def _assign_hazard_level(da, frac_thresholds=None):
+def _assign_severity_level(da, frac_thresholds=None):
     """
-    Assign hazard level (1–4) per year per grid cell based on highest threshold crossed.
+    Assign severity level (1–4) per year per grid cell based on highest threshold crossed.
 
     For vars with a 'level' dimension (threshold-based exceedance):
         level is the highest level where exceedance fraction > min_days_frac (0.01)
@@ -412,29 +416,29 @@ def _assign_hazard_level(da, frac_thresholds=None):
     For vars without a 'level' dimension (single value per year):
         compares annual value against frac_thresholds directly
 
-    Returns a Dataset with the original da + a {name}_hazard_level variable.
+    Returns a Dataset with the original da + a {name}_severity_level variable.
     """
     min_days_frac = 0.01  # must exceed > 1% of year to be valid
 
     if "level" in da.dims:
-        hazard_level = xr.zeros_like(da.isel(level=0), dtype=int)
+        severity_level = xr.zeros_like(da.isel(level=0), dtype=int)
         for i in range(da.level.size):
-            hazard_level = hazard_level.where(da.isel(level=i) <= min_days_frac, other=i + 1)
+            severity_level = severity_level.where(da.isel(level=i) <= min_days_frac, other=i + 1)
         # restore NaN where da was NaN
-        hazard_level = hazard_level.where(da.notnull().any('level'))
+        severity_level = severity_level.where(da.notnull().any('level'))
     else:
         thresholds = np.sort(frac_thresholds)
-        hazard_level = xr.zeros_like(da, dtype=int)
+        severity_level = xr.zeros_like(da, dtype=int)
         for i, th in enumerate(thresholds):
-            hazard_level = hazard_level.where(da <= th, other=i + 1)
-        hazard_level = hazard_level.where(da.notnull())
+            severity_level = severity_level.where(da <= th, other=i + 1)
+        severity_level = severity_level.where(da.notnull())
 
-    hazard_level.name = f"{da.name}_hazard_level"
-    hazard_level.attrs["calculation_notes"] = (
-        "hazard level 1–4: highest threshold crossed per year per grid cell. 0 = no threshold crossed."
+    severity_level.name = f"{da.name}_severity_level"
+    severity_level.attrs["calculation_notes"] = (
+        "severity level 1–4: highest threshold crossed per year per grid cell. 0 = no threshold crossed."
     )
 
-    return xr.merge([da, hazard_level], compat="override")
+    return xr.merge([da, severity_level], compat="override")
 
 
 def _get_surface(da, var):
@@ -510,3 +514,107 @@ def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
         ds_out.attrs = ds_in.attrs
         ds_out.attrs["regridded"] = "True"
     return ds_out
+
+
+def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
+                          units="fraction of year", notes=None, extra=None):
+    """
+    Add standardised gchi metadata to a metric output Dataset.
+    Preserves any input model/simulation attrs found in ds_dict.
+    Safe to call -- if anything fails, prints a warning and returns result unchanged.
+
+    Parameters
+    ----------
+    result : xr.Dataset
+        output from a metric function
+    metric_name : str
+        e.g. "AT", "WBGT", "PR1day"
+    ds_dict : dict
+        input data dict -- used to harvest model/simulation attrs
+    severity_thresholds : list, optional
+        threshold values used for level assignment
+    units : str
+        units of the metric output values (default "fraction of year")
+    notes : str, optional
+        methodological decisions or approximations made
+    extra : dict, optional
+        any additional metric-specific metadata key/value pairs
+    """
+    from .inputs import SOFTWARE_VERSION
+    from .thresholds import severity_thresholds as _default_thresholds
+    import datetime
+
+    try:
+        # collect input model attrs from ds_dict -- cmip6 and similar models
+        # carry these on their DataArrays. we harvest whatever is there so
+        # non-cmip inputs work fine too.
+        _model_keys = [
+            "source_id", "model_id", "institution_id", "experiment_id",
+            "variant_label", "realization", "grid_label", "mip_era",
+            "activity_id", "parent_experiment_id", "table_id",
+        ]
+        input_attrs = {}
+        for da in ds_dict.values():
+            if hasattr(da, "attrs"):
+                for k in _model_keys:
+                    if k in da.attrs and k not in input_attrs:
+                        input_attrs[k] = da.attrs[k]
+
+        # determine if default or custom thresholds
+        default_thresholds = _default_thresholds.get(metric_name)
+        if severity_thresholds is not None and default_thresholds is not None:
+            threshold_source = (
+                "gchi_default" if sorted(severity_thresholds) == sorted(default_thresholds)
+                else "user_defined"
+            )
+        elif severity_thresholds is not None:
+            threshold_source = "user_defined"
+        else:
+            threshold_source = "gchi_default"
+            severity_thresholds = default_thresholds
+
+        # build gchi metadata
+        gchi_attrs = {
+            "software": "gchi",
+            "software_version": SOFTWARE_VERSION,
+            "metric": metric_name,
+            "units": units,
+            "severity_level_assignment": (
+                "highest level where annual exceedance fraction exceeds threshold. "
+                "0 = no threshold exceeded."
+            ),
+            "severity_thresholds": str(severity_thresholds),
+            "severity_threshold_source": threshold_source,
+            "date_created": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+        if notes:
+            gchi_attrs["methodological_notes"] = notes
+        if extra:
+            gchi_attrs.update(extra)
+        if input_attrs:
+            gchi_attrs.update({f"input_{k}": v for k, v in input_attrs.items()})
+
+        # per-level threshold attrs
+        if severity_thresholds is not None:
+            for i, th in enumerate(severity_thresholds):
+                gchi_attrs[f"level_{i+1}_threshold"] = str(th)
+
+        # apply to dataset and all variables
+        result = result.copy()
+        result.attrs = {**input_attrs, **gchi_attrs}
+
+        for var in result.data_vars:
+            var_attrs = dict(result[var].attrs)
+            if "_severity_level" in var:
+                var_attrs["units"] = "severity level (0-4)"
+                var_attrs["long_name"] = f"{metric_name} severity level"
+            else:
+                var_attrs["units"] = units
+                var_attrs["long_name"] = f"{metric_name} annual exceedance fraction"
+            result[var].attrs = {**gchi_attrs, **var_attrs}
+
+    except Exception as e:
+        print(f"  WARNING: could not add metadata to {metric_name} output: {e}")
+
+    return result

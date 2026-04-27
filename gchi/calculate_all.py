@@ -279,8 +279,8 @@ def calculate_all(
     # --- drought ---
     print("\n-- drought --")
     _run("CDD",  lambda: CDD(ds_dict))
-    _run("SPI",  lambda: SPI(base_dict, ds_dict))
-    _run("SPEI", lambda: SPEI(base_dict, ds_dict))
+    _run("SPI",  lambda: SPI(ds_dict, base_dict))
+    _run("SPEI", lambda: SPEI(ds_dict, base_dict))
 
     # --- disease ---
     print("\n-- disease --")

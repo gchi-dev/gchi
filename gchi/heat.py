@@ -8,10 +8,10 @@ import pandas as pd
 from . import newt
 
 from ._core import (
-    _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level,
-    _get_tsteps, _ann_frac, _tetens_sat_vapor_pressure, _nan_mask,
+    _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level,
+    _get_tsteps, _ann_frac, _tetens_sat_vapor_pressure, _nan_mask, _add_metric_metadata,
 )
-from .thresholds import hazard_thresholds as _default_thresholds
+from .thresholds import severity_thresholds as _default_thresholds
 
 
 # =================
@@ -448,16 +448,17 @@ def at_values(ds_dict):
     return (0.92 * TX) + (0.22 * VP) - 1.3
 
 
-def AT(ds_dict, hazard_thresholds=None):
+def AT(ds_dict, severity_thresholds=None):
     """
     Apparent temperature exceedance levels.
-    Calls at_values() then computes annual exceedance fraction and hazard levels.
+    Calls at_values() then computes annual exceedance fraction and severity levels.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["AT"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["AT"]
     AT_val = at_values(ds_dict)
-    AT_levels = _annual_exceedance_frac(AT_val, hazard_thresholds, var_name="AT")
-    return _assign_hazard_level(AT_levels)
+    AT_levels = _annual_exceedance_frac(AT_val, severity_thresholds, var_name="AT")
+    result = _assign_severity_level(AT_levels)
+    return _add_metric_metadata(result, "AT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
 def hi_values(ds_dict):
@@ -501,13 +502,14 @@ def hi_values(ds_dict):
     return (HI - 32) * (5/9)  # F to C
 
 
-def HI(ds_dict, hazard_thresholds=None):
+def HI(ds_dict, severity_thresholds=None):
     """NOAA heat index exceedance levels."""
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["HI"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["HI"]
     HI_val = hi_values(ds_dict)
-    HI_levels = _annual_exceedance_frac(HI_val, hazard_thresholds, var_name="HI")
-    return _assign_hazard_level(HI_levels)
+    HI_levels = _annual_exceedance_frac(HI_val, severity_thresholds, var_name="HI")
+    result = _assign_severity_level(HI_levels)
+    return _add_metric_metadata(result, "HI", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
 def hu_values(ds_dict):
@@ -525,25 +527,27 @@ def hu_values(ds_dict):
     return TX + h
 
 
-def Hu(ds_dict, hazard_thresholds=None):
+def Hu(ds_dict, severity_thresholds=None):
     """Humidex exceedance levels."""
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["Hu"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["Hu"]
     Hu_val = hu_values(ds_dict)
-    Hu_levels = _annual_exceedance_frac(Hu_val, hazard_thresholds, var_name="Hu")
-    return _assign_hazard_level(Hu_levels)
+    Hu_levels = _annual_exceedance_frac(Hu_val, severity_thresholds, var_name="Hu")
+    result = _assign_severity_level(Hu_levels)
+    return _add_metric_metadata(result, "Hu", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
-def WBT(ds_dict, hazard_thresholds=None):
+def WBT(ds_dict, severity_thresholds=None):
     """
     Wet Bulb Temperature exceedance levels via NEWT (Rogers & Warren 2024).
     Call wbt_values() to get raw WBT without level assignment.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["WBT"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["WBT"]
     Twp = _wbt_values(ds_dict)
-    WBT_levels = _annual_exceedance_frac(Twp, hazard_thresholds, var_name="WBT")
-    return _assign_hazard_level(WBT_levels)
+    WBT_levels = _annual_exceedance_frac(Twp, severity_thresholds, var_name="WBT")
+    result = _assign_severity_level(WBT_levels)
+    return _add_metric_metadata(result, "WBT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes="WBT via NEWT pseudo wet-bulb temperature (Rogers & Warren 2024)")
 
 
 def wbt_values(ds_dict):
@@ -570,13 +574,14 @@ def wbgt_values(ds_dict):
         return 0.7 * Twb + 0.3 * TX
 
 
-def WBGT(ds_dict, hazard_thresholds=None):
+def WBGT(ds_dict, severity_thresholds=None):
     """WBGT exceedance levels. Call wbgt_values() to get raw WBGT."""
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["WBGT"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["WBGT"]
     WBGT_val = wbgt_values(ds_dict)
-    WBGT_levels = _annual_exceedance_frac(WBGT_val, hazard_thresholds, var_name="WBGT")
-    return _assign_hazard_level(WBGT_levels)
+    WBGT_levels = _annual_exceedance_frac(WBGT_val, severity_thresholds, var_name="WBGT")
+    result = _assign_severity_level(WBGT_levels)
+    return _add_metric_metadata(result, "WBGT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes="if MRT vars not in ds_dict, falls back to Schwingshackl 2021 approximation using tasmax as dry bulb")
 
 
 def utci_hot_values(ds_dict, hum_var='both'):
@@ -584,20 +589,21 @@ def utci_hot_values(ds_dict, hum_var='both'):
     return _utci_values(ds_dict, hum_var=hum_var, hotorcold='hot')
 
 
-def UTCIhot(ds_dict, hum_var='both', hazard_thresholds=None):
+def UTCIhot(ds_dict, hum_var='both', severity_thresholds=None):
     """
     UTCI heat stress exceedance levels.
     Call utci_hot_values() to get raw UTCI without level assignment.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["UTCIhot"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["UTCIhot"]
     UTCI = _utci_values(ds_dict, hum_var=hum_var, hotorcold='hot')
-    UTCI_levels = _annual_exceedance_frac(UTCI, hazard_thresholds=hazard_thresholds, var_name="UTCIhot")
-    return _assign_hazard_level(UTCI_levels)
+    UTCI_levels = _annual_exceedance_frac(UTCI, severity_thresholds=severity_thresholds, var_name="UTCIhot")
+    result = _assign_severity_level(UTCI_levels)
+    return _add_metric_metadata(result, "UTCIhot", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
 def HWF(ds_dict, base_dict, percentile_base=90,
-        hazard_thresholds=None, hwd_threshold=3, detrend=True):
+        severity_thresholds=None, hwd_threshold=3, detrend=True):
     """
     Heatwave Frequency — fraction of year where days are part of a heatwave.
     A heatwave is >= hwd_threshold consecutive days where:
@@ -611,7 +617,7 @@ def HWF(ds_dict, base_dict, percentile_base=90,
         Output from calculate_base_period_percentiles() — needs 'tas' and 't{percentile_base}p_calday'.
     percentile_base : int
         Percentile threshold (default 90). Must match a key in base_dict.
-    hazard_thresholds : list, optional
+    severity_thresholds : list, optional
     hwd_threshold : int
         Minimum consecutive days for a heatwave (default 3).
     detrend : bool
@@ -619,8 +625,8 @@ def HWF(ds_dict, base_dict, percentile_base=90,
         Useful for future projections — prevents long-term warming from inflating counts.
         Warn users against detrending if data span is very short.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["HWF"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["HWF"]
 
     varname = f"t{str(percentile_base)}p_calday"
     TXp_calday = _check_and_convert_units(da=base_dict[varname], input_var=varname, conv_type="C").chunk({"lat": -1, "lon": -1})
@@ -659,7 +665,8 @@ def HWF(ds_dict, base_dict, percentile_base=90,
     hwf_counts = T.where(mask_expanded).resample(time="1YE").count()
     hwf_counts = hwf_counts.where(~_nan_mask(T))
     HWF_val = _ann_frac(hwf_counts, steps_per_year).rename("HWF")
-    return _assign_hazard_level(HWF_val, frac_thresholds=hazard_thresholds)
+    result = _assign_severity_level(HWF_val, frac_thresholds=severity_thresholds)
+    return _add_metric_metadata(result, "HWF", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"calendar-day {percentile_base}th percentile threshold. detrend={detrend}. hwd_threshold={hwd_threshold} consecutive days")
 
 
 def txc_values(ds_dict):
@@ -667,16 +674,17 @@ def txc_values(ds_dict):
     return _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
 
 
-def TXC(ds_dict, hazard_thresholds=None):
+def TXC(ds_dict, severity_thresholds=None):
     """
     Days exceeding absolute temperature thresholds (30, 35, 40, 45°C default).
     General 'hot day' metric.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["TXC"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["TXC"]
     TX = txc_values(ds_dict)
-    TXC_levels = _annual_exceedance_frac(TX, hazard_thresholds, var_name="TXC")
-    return _assign_hazard_level(TXC_levels)
+    TXC_levels = _annual_exceedance_frac(TX, severity_thresholds, var_name="TXC")
+    result = _assign_severity_level(TXC_levels)
+    return _add_metric_metadata(result, "TXC", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
 def tr_values(ds_dict):
@@ -684,16 +692,17 @@ def tr_values(ds_dict):
     return _check_and_convert_units(da=ds_dict['tasmin'], input_var="tasmin", conv_type="C")
 
 
-def TR(ds_dict, TR_thresh=20, hazard_thresholds=None):
+def TR(ds_dict, TR_thresh=20, severity_thresholds=None):
     """
     Tropical nights — fraction of year where daily min T > TR_thresh (20°C default).
     Associated with increased heat mortality.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["TR"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["TR"]
     TN = tr_values(ds_dict)
     steps_per_year = _get_tsteps(TN)
     TR_val = TN.where(TN > TR_thresh).resample(time="1YE").count()
     TR_val = TR_val.where(~_nan_mask(TN))
     TR_val = _ann_frac(TR_val, steps_per_year).rename("TR")
-    return _assign_hazard_level(TR_val, frac_thresholds=hazard_thresholds)
+    result = _assign_severity_level(TR_val, frac_thresholds=severity_thresholds)
+    return _add_metric_metadata(result, "TR", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"tropical nights: tasmin > {TR_thresh} degC")

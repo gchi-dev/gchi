@@ -13,7 +13,7 @@ from .inputs import (
     help,
 )
 
-from .thresholds import hazard_thresholds, fwi_thresholds
+from .thresholds import severity_thresholds, fwi_thresholds
 
 # heat stress
 from .heat import (
@@ -81,7 +81,7 @@ __all__ = [
     "calculate_base_period_percentiles",
     "show_expected_ds_format",
     "help",
-    "hazard_thresholds",
+    "severity_thresholds",
     "fwi_thresholds",
     # heat
     "AT", "at_values",

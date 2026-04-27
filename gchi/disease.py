@@ -7,11 +7,11 @@ all VBD metrics share the same structure — temperature range suitability + mas
 
 import xarray as xr
 
-from ._core import _check_and_convert_units, _ann_frac, _assign_hazard_level, _get_tsteps, _nan_mask
-from .thresholds import hazard_thresholds as _default_thresholds
+from ._core import _check_and_convert_units, _ann_frac, _assign_severity_level, _get_tsteps, _nan_mask, _add_metric_metadata
+from .thresholds import severity_thresholds as _default_thresholds
 
 
-def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, hazard_thresholds):
+def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, severity_thresholds):
     """
     Shared logic for vector-borne disease suitability.
     Counts fraction of months per year where T is within the suitable range.
@@ -34,51 +34,55 @@ def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, hazard_threshold
     VS = VS.where(~_nan_mask(T)).where(VBD_mask)
 
     VS_levels = _ann_frac(VS, steps_per_year).rename(var_name)
-    return _assign_hazard_level(VS_levels, frac_thresholds=hazard_thresholds)
+    return _assign_severity_level(VS_levels, frac_thresholds=severity_thresholds)
 
 
-def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file=None, hazard_thresholds=None):
+def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file=None, severity_thresholds=None):
     """
     Malaria transmission suitability — fraction of year with suitable temperature.
     Temperature range from literature.
     """
     print("calculating malaria suitability...")
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["VSmalaria"]
-    return _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSmalaria", hazard_thresholds)
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["VSmalaria"]
+    result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSmalaria", severity_thresholds)
+    return _add_metric_metadata(result, "VSmalaria", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Anopheles suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file=None, hazard_thresholds=None):
+def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file=None, severity_thresholds=None):
     """
     Zika transmission suitability — fraction of year with suitable temperature.
     """
     print("calculating zika suitability...")
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["VSzika"]
-    return _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSzika", hazard_thresholds)
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["VSzika"]
+    result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSzika", severity_thresholds)
+    return _add_metric_metadata(result, "VSzika", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes aegypti zika suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSdengueAeg(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, hazard_thresholds=None):
+def VSdengueAeg(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, severity_thresholds=None):
     """
     Dengue (Aedes aegypti) transmission suitability.
     """
     print("calculating dengue aegypti suitability...")
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["VSdengueAeg"]
-    return _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSdengueAeg", hazard_thresholds)
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["VSdengueAeg"]
+    result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSdengueAeg", severity_thresholds)
+    return _add_metric_metadata(result, "VSdengueAeg", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes aegypti dengue suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSdengueAlb(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, hazard_thresholds=None):
+def VSdengueAlb(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, severity_thresholds=None):
     """
     Dengue (Aedes albopictus) transmission suitability.
     """
     print("calculating dengue albopictus suitability...")
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["VSdengueAlb"]
-    return _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSdengueAlb", hazard_thresholds)
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["VSdengueAlb"]
+    result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSdengueAlb", severity_thresholds)
+    return _add_metric_metadata(result, "VSdengueAlb", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes albopictus dengue suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, hazard_thresholds=None):
+def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_thresholds=None):
     """
     Vibrio bacteria suitability (coastal areas).
     Suitability = monthly SST >= SST_min and SSS < salinity_max.
@@ -115,10 +119,11 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, hazard_thre
     SSS = SSS.resample(time="1ME").mean()
     steps_per_year = _get_tsteps(SST)
 
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["VbrS"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["VbrS"]
 
     VbrS_val = SST.where((SST >= SST_min) & (SSS < salinity_max)).resample(time="1YE").count()
     VbrS_val = VbrS_val.where(~_nan_mask(SST))
     VbrS_val = _ann_frac(VbrS_val, steps_per_year).rename("VbrS")
-    return _assign_hazard_level(VbrS_val, frac_thresholds=hazard_thresholds)
+    result = _assign_severity_level(VbrS_val, frac_thresholds=severity_thresholds)
+    return _add_metric_metadata(result, "VbrS", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Vibrio suitability: SST >= {SST_min} degC and SSS < {salinity_max} psu. Trinanes et al. 2021.")
