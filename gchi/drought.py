@@ -10,10 +10,10 @@ import xarray as xr
 from scipy import stats
 
 from ._core import (
-    _check_and_convert_units, _annual_exceedance_frac, _assign_hazard_level,
-    _get_tsteps, _ann_frac, _nan_mask,
+    _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level,
+    _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata,
 )
-from .thresholds import hazard_thresholds as _default_thresholds
+from .thresholds import severity_thresholds as _default_thresholds
 
 def _extract_da(val, var_name):
     """
@@ -37,15 +37,15 @@ def cdd_values(ds_dict):
     return _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
 
 
-def CDD(ds_dict, hazard_thresholds=None, min_threshold=10):
+def CDD(ds_dict, severity_thresholds=None, min_threshold=10):
     """
     Consecutive Dry Days — fraction of year that falls within dry spells of
     at least min_threshold days (default 10).
 
     Uses a rolling window approach: counts all days that are part of a qualifying dry spell.
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["CDD"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["CDD"]
 
     PR = cdd_values(ds_dict)
     steps_per_year = _get_tsteps(PR)
@@ -62,10 +62,11 @@ def CDD(ds_dict, hazard_thresholds=None, min_threshold=10):
     CDD_val = PR.where(mask_expanded).resample(time="1YE").count()
     CDD_val = CDD_val.where(~_nan_mask(PR))
     CDD_val = _ann_frac(CDD_val, steps_per_year).rename("CDD")
-    return _assign_hazard_level(CDD_val, frac_thresholds=hazard_thresholds)
+    result = _assign_severity_level(CDD_val, frac_thresholds=severity_thresholds)
+    return _add_metric_metadata(result, "CDD", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"consecutive dry days: dry spell >= {min_threshold} days with pr < 1 mm/day.")
 
 
-def SPI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
+def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
     """
     Standardized Precipitation Index.
     Fits a gamma distribution to the base period and applies it to the study period.
@@ -80,18 +81,20 @@ def SPI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
     timescale : int
         accumulation timescale in months (default 6)
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["SPI"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["SPI"]
 
     # base_pr = _check_and_convert_units(da=base_dict['pr'], input_var="pr", conv_type="mm day-1")
     base_pr = _check_and_convert_units(da=_extract_da(base_dict['pr'], 'pr'), input_var="pr", conv_type="mm day-1")
-    base_acc = base_pr.resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
+    #base_acc = base_pr.resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time') # the chunking and resample caused issues
+    base_acc = base_pr.resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
 
     study_pr = _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
-    study_acc = study_pr.resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
+    study_acc = study_pr.resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
 
     def _fit_and_apply_gamma(hist_data, study_data):
-        hist_data = hist_data[~np.isnan(hist_data)]
+        #hist_data = hist_data[~np.isnan(hist_data)]
+        hist_data = hist_data[(~np.isnan(hist_data)) & (hist_data > 0)]
         out = np.full(study_data.shape, np.nan)
         study_mask = ~np.isnan(study_data)
         if len(hist_data) < 30:
@@ -109,14 +112,16 @@ def SPI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
         vectorize=True,
         dask="parallelized",
         output_dtypes=[float],
+        dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},  # <-- add this
     )
     SPI_val = SPI_val.assign_coords(time=study_acc.time)
 
-    SPI_levels = _annual_exceedance_frac(SPI_val, hazard_thresholds=hazard_thresholds, var_name="SPI")
-    return _assign_hazard_level(SPI_levels)
+    SPI_levels = _annual_exceedance_frac(SPI_val, severity_thresholds=severity_thresholds, var_name="SPI", exceedance_dir="below")
+    result = _assign_severity_level(SPI_levels)
+    return _add_metric_metadata(result, "SPI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"gamma distribution fitted to base period pr. timescale={timescale} months.")
 
 
-def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
+def SPEI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
     """
     Standardized Precipitation-Evapotranspiration Index.
     Fits a generalized logistic distribution to the water balance (P - PET)
@@ -131,21 +136,23 @@ def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
     timescale : int
         accumulation timescale in months (default 6)
     """
-    if hazard_thresholds is None:
-        hazard_thresholds = _default_thresholds["SPEI"]
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["SPEI"]
 
     PR_base = _check_and_convert_units(da=base_dict['pr'], input_var="pr", conv_type="mm day-1")
     EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
-    base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
+    base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
+
 
     # PR = _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
     # EVSPSBLPOT = _check_and_convert_units(da=ds_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
     PR = _check_and_convert_units(da=_extract_da(ds_dict['pr'], 'pr'), input_var="pr", conv_type="mm day-1")
     EVSPSBLPOT = _check_and_convert_units(da=_extract_da(ds_dict['evspsblpot'], 'evspsblpot'), input_var="evspsblpot", conv_type="mm day-1")
-    study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().rolling(time=timescale).sum().dropna('time')
+    study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
 
     def _fit_and_apply_genlog(hist_data, study_data):
-        hist_clean = hist_data[~np.isnan(hist_data)]
+        #hist_clean = hist_data[~np.isnan(hist_data)]
+        hist_data = hist_data[(~np.isnan(hist_data)) & (hist_data > 0)]
         out = np.full(study_data.shape, np.nan)
         study_mask = ~np.isnan(study_data)
         if len(hist_clean) < 30:
@@ -163,8 +170,10 @@ def SPEI(base_dict, ds_dict, timescale=6, hazard_thresholds=None):
         vectorize=True,
         dask="parallelized",
         output_dtypes=[float],
+        dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},  # <-- add this
     )
     SPEI_val = SPEI_val.assign_coords(time=study_acc.time)
 
-    SPEI_levels = _annual_exceedance_frac(SPEI_val, hazard_thresholds=hazard_thresholds, var_name="SPEI")
-    return _assign_hazard_level(SPEI_levels)
+    SPEI_levels = _annual_exceedance_frac(SPEI_val, severity_thresholds=severity_thresholds, var_name="SPEI", exceedance_dir="below")
+    result = _assign_severity_level(SPEI_levels)
+    return _add_metric_metadata(result, "SPEI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"generalised logistic fitted to P-PET. timescale={timescale} months. PET var: evspsblpot.")
