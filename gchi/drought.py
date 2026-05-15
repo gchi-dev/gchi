@@ -128,7 +128,7 @@ def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
         dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},
     )
     SPI_val = SPI_val.assign_coords(time=study_acc.time)
- 
+    SPI_val = SPI_val.where(~_nan_mask(study_pr))
     SPI_levels = _annual_exceedance_frac(SPI_val, severity_thresholds=severity_thresholds, var_name="SPI", exceedance_dir="below")
     result = _assign_severity_level(SPI_levels)
     return _add_metric_metadata(result, "SPI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"gamma distribution fitted per calendar month to base period pr. timescale={timescale} months.")
@@ -193,7 +193,7 @@ def SPEI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
         dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},
     )
     SPEI_val = SPEI_val.assign_coords(time=study_acc.time)
- 
+    SPEI_val = SPEI_val.where(~_nan_mask(PR))
     SPEI_levels = _annual_exceedance_frac(SPEI_val, severity_thresholds=severity_thresholds, var_name="SPEI", exceedance_dir="below")
     result = _assign_severity_level(SPEI_levels)
     return _add_metric_metadata(result, "SPEI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"generalised logistic fitted per calendar month to P-PET. timescale={timescale} months. PET var: evspsblpot.")
