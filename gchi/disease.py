@@ -60,7 +60,7 @@ def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file=None, severity_thresholds=
     return _add_metric_metadata(result, "VSzika", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes aegypti zika suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSdengueAeg(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, severity_thresholds=None):
+def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, severity_thresholds=None):
     """
     Dengue (Aedes aegypti) transmission suitability.
     """
@@ -71,7 +71,7 @@ def VSdengueAeg(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, severity_thre
     return _add_metric_metadata(result, "VSdengueAeg", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes aegypti dengue suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSdengueAlb(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, severity_thresholds=None):
+def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, severity_thresholds=None):
     """
     Dengue (Aedes albopictus) transmission suitability.
     """
