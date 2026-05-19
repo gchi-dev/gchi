@@ -27,7 +27,8 @@ severity_thresholds = {
     "VSdengueAlb": [0, 0.333, 0.583, 0.833],  # fraction of year: marginal - endemic
     "PR1day": [90, 95, 98, 99.5], # percentile
     "PR5day": [90, 95, 98, 99.5], # percentile
-    "PRXmm": [20, 30, 40, 50], # mm/day
+    #"PRXmm": [20, 30, 40, 50], # mm/day
+    "PRXmm": [10, 20, 30, 40], # mm/day
     "SPI": [-0.8, -1.3, -1.6, -2],  # index unitless
     "SPEI": [-0.8, -1.3, -1.6, -2],  # index unitless
     "VbrS": [0, 0.083, 0.167, 0.417],  # actual percentiles where 0, 0, 0.167, 0.417, but to differentiate L1 and L2 1 month is chosen for L2 (approx 97.2th percentile)
