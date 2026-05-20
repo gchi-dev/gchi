@@ -638,7 +638,9 @@ def HWF(ds_dict, base_dict, percentile_base=90,
         def _detrend(arr):
             t = np.arange(arr.shape[0])
             slope, intercept = np.polyfit(t, arr, 1)
-            return arr - (slope * t + intercept) + arr.mean()
+            # subtract trend relative to t=0, so early years unchanged
+            # late years get progressively cooler (if trend positive warming)
+            return arr - slope * t
 
         T = xr.apply_ufunc(
             _detrend,
