@@ -437,7 +437,7 @@ def _utci_values(ds_dict, hum_var='both', hotorcold='hot'):
 def at_values(ds_dict):
     """
     Apparent temperature (°C) — 'feels like' temperature.
-    Combines air temp, humidity, and wind. From Zhao et al. 2015.
+    Combines air temp, vapor pressure. From Zhao et al. 2015.
     """
     TX = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
     RH = _check_and_convert_units(da=ds_dict['hurs'], input_var="hurs", conv_type="fraction")
@@ -523,7 +523,7 @@ def hu_values(ds_dict):
 
     es = _tetens_sat_vapor_pressure(TX)
     e = RH * es
-    h = (5/9) * (e - 10)
+    h = (5/9) * (e*10 - 10) # convert kPa to hPa before applying formula
     return TX + h
 
 
