@@ -7,6 +7,7 @@ PR1day and PR5day use spatially varying thresholds from base_dict.
 
 import numpy as np
 import xarray as xr
+import json
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level,
@@ -127,12 +128,20 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
     PR1day_val = PR1day_val.sortby("level")  # sort ascending so level 1=90th, level 4=99.5th
     PR1day_val = PR1day_val.where(~nanmask)
     PR1day_val = _add_metric_metadata(PR1day_val, "PR1day", ds_dict, severity_thresholds=percentile_thresholds, units="fraction of year", notes="percentile thresholds from base period all-day distribution. level N: exceedance > (100-p)/100 of year.")
-    PR1day_val.attrs['level_thresholds'] = [
+    # PR1day_val.attrs['level_thresholds'] = [
+    #     {"level": n - i, "percentile": pr_base_percentile_vals[i],
+    #      "exceedance_frac_threshold": (100 - pr_base_percentile_vals[i]) / 100,
+    #      "unit": "percentile", "source": "base period distribution"}
+    #     for i in range(n)
+    # ]
+
+    PR1day_val.attrs['level_thresholds'] = json.dumps([
         {"level": n - i, "percentile": pr_base_percentile_vals[i],
          "exceedance_frac_threshold": (100 - pr_base_percentile_vals[i]) / 100,
          "unit": "percentile", "source": "base period distribution"}
         for i in range(n)
-    ]
+    ])
+
     return PR1day_val
 
 
@@ -232,10 +241,16 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     PR5day_val = PR5day_val.sortby("level")  # sort ascending so level 1=90th, level 4=99.5th
     PR5day_val = PR5day_val.where(~nanmask)
     PR5day_val = _add_metric_metadata(PR5day_val, "PR5day", ds_dict, severity_thresholds=percentile_thresholds, units="fraction of year", notes="percentile thresholds from base period 5-day rolling sums (wet windows > 5mm). level N: exceedance > (100-p)/100 of year.")
-    PR5day_val.attrs['level_thresholds'] = [
+    # PR5day_val.attrs['level_thresholds'] = [
+    #     {"level": n - i, "percentile": pr5day_base_percentile_vals[i],
+    #      "exceedance_frac_threshold": (100 - pr5day_base_percentile_vals[i]) / 100,
+    #      "unit": "percentile", "source": "base period distribution"}
+    #     for i in range(n)
+    # ]
+    PR5day_val.attrs['level_thresholds'] = json.dumps([
         {"level": n - i, "percentile": pr5day_base_percentile_vals[i],
          "exceedance_frac_threshold": (100 - pr5day_base_percentile_vals[i]) / 100,
          "unit": "percentile", "source": "base period distribution"}
         for i in range(n)
-    ]
+    ])
     return PR5day_val

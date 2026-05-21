@@ -65,6 +65,33 @@ def CDD(ds_dict, severity_thresholds=None, min_threshold=5):
     result = _assign_severity_level(CDD_val, frac_thresholds=severity_thresholds)
     return _add_metric_metadata(result, "CDD", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"consecutive dry days: dry spell >= {min_threshold} days with pr < 1 mm/day.")
 
+def CDD(ds_dict, severity_thresholds=None, min_threshold=10):
+    """
+    Consecutive Dry Days — fraction of year that falls within dry spells of
+    at least min_threshold days (default 10).
+
+    Uses a rolling window approach: counts all days that are part of a qualifying dry spell.
+    """
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["CDD"]
+
+    PR = cdd_values(ds_dict)
+    steps_per_year = _get_tsteps(PR)
+
+    dry_mask = PR < 1
+
+    rolling_sum = PR.where(dry_mask).rolling(time=min_threshold, center=False).count()
+    window_all_dry = rolling_sum == min_threshold
+
+    mask_expanded = xr.zeros_like(dry_mask, dtype=bool)
+    for shift in range(min_threshold):
+        mask_expanded |= window_all_dry.shift(time=shift, fill_value=False)
+
+    CDD_val = PR.where(mask_expanded).resample(time="1YE").count()
+    CDD_val = CDD_val.where(~_nan_mask(PR))
+    CDD_val = _ann_frac(CDD_val, steps_per_year).rename("CDD")
+    result = _assign_severity_level(CDD_val, frac_thresholds=severity_thresholds)
+    return _add_metric_metadata(result, "CDD", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"consecutive dry days: dry spell >= {min_threshold} days with pr < 1 mm/day.")
 
 def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
     """
