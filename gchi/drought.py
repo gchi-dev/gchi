@@ -37,10 +37,10 @@ def cdd_values(ds_dict):
     return _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
 
 
-def CDD(ds_dict, severity_thresholds=None, min_threshold=10):
+def CDD(ds_dict, severity_thresholds=None, min_threshold=5):
     """
     Consecutive Dry Days — fraction of year that falls within dry spells of
-    at least min_threshold days (default 10).
+    at least min_threshold days (default 5).
 
     Uses a rolling window approach: counts all days that are part of a qualifying dry spell.
     """
