@@ -548,6 +548,13 @@ def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
         # collect input model attrs from ds_dict -- cmip6 and similar models
         # carry these on their DataArrays. we harvest whatever is there so
         # non-cmip inputs work fine too.
+        # attrs to drop from source data — noisy/irrelevant for gchi outputs
+        _drop_attrs = {
+            "standard_name", "comment", "cell_methods", "cell_measures",
+            "history", "long_name", "original_name", "description",
+        }
+
+        # attrs to harvest from source DataArrays if present
         _model_keys = [
             "source_id", "model_id", "institution_id", "experiment_id",
             "variant_label", "realization", "grid_label", "mip_era",
@@ -559,6 +566,19 @@ def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
                 for k in _model_keys:
                     if k in da.attrs and k not in input_attrs:
                         input_attrs[k] = da.attrs[k]
+
+        _metric_category = {
+            "AT": "heat", "HI": "heat", "Hu": "heat", "WBT": "heat",
+            "WBGT": "heat", "UTCIhot": "heat", "TXC": "heat",
+            "TR": "heat", "HWF": "heat",
+            "UTCIcold": "cold", "TNXp": "cold",
+            "FI": "fire", "HDW": "fire", "FWI": "fire",
+            "O3": "aq", "PM2pt5": "aq",
+            "CDD": "drought", "SPI": "drought", "SPEI": "drought",
+            "VSmalaria": "disease", "VSzika": "disease",
+            "VSdengueAeg": "disease", "VSdengueAlb": "disease", "VbrS": "disease",
+            "PRXmm": "weather", "PR1day": "weather", "PR5day": "weather",
+        }
 
         # determine if default or custom thresholds
         default_thresholds = _default_thresholds.get(metric_name)
@@ -576,6 +596,7 @@ def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
         # build gchi metadata
         gchi_attrs = {
             "software": "gchi",
+            "gchi_category": _metric_category.get(metric_name, "other"),
             "software_version": SOFTWARE_VERSION,
             "metric": metric_name,
             "units": units,
@@ -600,19 +621,21 @@ def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
             for i, th in enumerate(severity_thresholds):
                 gchi_attrs[f"level_{i+1}_threshold"] = str(th)
 
-        # apply to dataset and all variables
+        # apply to dataset and all variables — drop noisy source attrs
         result = result.copy()
         result.attrs = {**input_attrs, **gchi_attrs}
 
         for var in result.data_vars:
-            var_attrs = dict(result[var].attrs)
+            # start from existing var attrs, drop unwanted ones, then overlay gchi attrs
+            var_attrs = {k: v for k, v in result[var].attrs.items()
+                         if k not in _drop_attrs}
             if "_severity_level" in var:
                 var_attrs["units"] = "severity level (0-4)"
                 var_attrs["long_name"] = f"{metric_name} severity level"
             else:
                 var_attrs["units"] = units
                 var_attrs["long_name"] = f"{metric_name} annual exceedance fraction"
-            result[var].attrs = {**gchi_attrs, **var_attrs}
+            result[var].attrs = {**var_attrs, **gchi_attrs}
 
     except Exception as e:
         print(f"  WARNING: could not add metadata to {metric_name} output: {e}")
