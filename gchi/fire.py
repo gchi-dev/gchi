@@ -239,10 +239,10 @@ def _fwi_from_isi_bui(isi, bui):
     return xr.where(bb <= 1, bb, np.exp(2.72 * (0.434 * np.log(bb))**0.647))
 
 
-def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None):
+def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, spatial_chunk=20):
     """
     Daily FWI index values.
-    Does NOT work chunked — data will be loaded. This is a known limitation
+    Does NOT work chunked — data will be chunked only along spatial dims. This is a known limitation
     of the sequential FWI algorithm.
 
     Parameters
@@ -263,8 +263,9 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None):
 
     # FWI does not work chunked — load if chunked
     for key in ["tasmax", "pr", "sfcWind", "hursmin", "hurs"]:
-        if key in ds_dict and ds_dict[key].chunks is not None:
-            ds_dict[key] = ds_dict[key].load()
+        ds_dict[key] = ds_dict[key].chunk({"time": -1, "lat": spatial_chunk, "lon": spatial_chunk})  # chunk entire time dim because sequential build up of drying 
+        #if key in ds_dict and ds_dict[key].chunks is not None:
+            #ds_dict[key] = ds_dict[key].load() # this blows up ram, only use if manageable amount of data 
 
     if fwi_mask_file is not None:
         fwi_mask = xr.open_dataset(fwi_mask_file).mask_infreq_burning
