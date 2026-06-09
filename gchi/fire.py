@@ -261,9 +261,10 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
     """
     print("calculating FWI...")
 
-    # FWI does not work chunked — load if chunked
+    # FWI may not work chunked — load if chunked
     for key in ["tasmax", "pr", "sfcWind", "hursmin", "hurs"]:
-        ds_dict[key] = ds_dict[key].chunk({"time": -1, "lat": spatial_chunk, "lon": spatial_chunk})  # chunk entire time dim because sequential build up of drying 
+        if key in ds_dict:
+            ds_dict[key] = ds_dict[key].chunk({"time": -1, "lat": spatial_chunk, "lon": spatial_chunk})  # chunk entire time dim because sequential build up of drying 
         #if key in ds_dict and ds_dict[key].chunks is not None:
             #ds_dict[key] = ds_dict[key].load() # this blows up ram, only use if manageable amount of data 
 
