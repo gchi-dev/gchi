@@ -239,106 +239,102 @@ def _fwi_from_isi_bui(isi, bui):
     return xr.where(bb <= 1, bb, np.exp(2.72 * (0.434 * np.log(bb))**0.647))
 
 
+
 def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, spatial_chunk=20):
     """
     Daily FWI index values.
-    Does NOT work chunked — data will be chunked only along spatial dims. This is a known limitation
-    of the sequential FWI algorithm.
-
-    Parameters
-    ----------
-    ds_dict : dict
-    use_hursmin : bool
-        use hursmin over hurs if both available
+    FWI doesn't not work well with lazy loading/chunking, but loading a multi-decade dataset will blow up RAM. 
+    Processes one year at a time to manage memory. Pass full ds_dict with complete time range. 
     init_values : dict, optional
+        intial values to branch day 1 from. can be overwritten. 
         initial values {'ffmc': 85, 'dmc': 6, 'dc': 15}
     fwi_mask_file : str, optional
         path to infrequent burning mask file
-
-    Returns
-    -------
-    xr.DataArray of daily FWI values
     """
     print("calculating FWI...")
-
-    # FWI may not work chunked — load if chunked
-    for key in ["tasmax", "pr", "sfcWind", "hursmin", "hurs"]:
-        if key in ds_dict:
-            ds_dict[key] = ds_dict[key].chunk({"time": -1, "lat": spatial_chunk, "lon": spatial_chunk})  # chunk entire time dim because sequential build up of drying 
-        #if key in ds_dict and ds_dict[key].chunks is not None:
-            #ds_dict[key] = ds_dict[key].load() # this blows up ram, only use if manageable amount of data 
 
     if fwi_mask_file is not None:
         fwi_mask = xr.open_dataset(fwi_mask_file).mask_infreq_burning
     else:
         print("no FWI mask file provided — proceeding without infrequent burning mask")
-        fwi_mask = False  # no masking
+        fwi_mask = False
 
-    TX = _check_and_convert_units(da=ds_dict["tasmax"], input_var="tasmax", conv_type="C").where(~fwi_mask)
-    precip = _check_and_convert_units(da=ds_dict["pr"], input_var="pr", conv_type="mm day-1").where(~fwi_mask)
-    wind = _check_and_convert_units(da=ds_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1").where(~fwi_mask)
+    sample = list(ds_dict.values())[0]
+    years = np.unique(sample.time.dt.year.values)
+    results = []
+    init = init_values if init_values is not None else {'ffmc': 85.0, 'dmc': 6.0, 'dc': 15.0}
 
-    if use_hursmin and 'hursmin' in ds_dict:
-        print("using hursmin")
-        rh = _check_and_convert_units(da=ds_dict['hursmin'], input_var="hursmin", conv_type="%").where(~fwi_mask)
-    else:
-        print("using hurs")
-        rh = _check_and_convert_units(da=ds_dict['hurs'], input_var="hurs", conv_type="%").where(~fwi_mask)
-    rh = rh.clip(0, 100)
+    for year in years:
+        print(f"processing year {year}...")
+        year_dict = {k: v.sel(time=str(year)).load() for k, v in ds_dict.items() if hasattr(v, 'sel')}
 
-    lat = TX.lat
-    time = TX.time
-    if hasattr(time, 'dt'):
-        month = time.dt.month
-    else:
-        month = xr.DataArray(
-            [(i // 30) % 12 + 1 for i in range(len(time))],
-            dims=['time'], coords={'time': time},
+        TX = _check_and_convert_units(da=year_dict["tasmax"], input_var="tasmax", conv_type="C").where(~fwi_mask)
+        precip = _check_and_convert_units(da=year_dict["pr"], input_var="pr", conv_type="mm day-1").where(~fwi_mask)
+        wind = _check_and_convert_units(da=year_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1").where(~fwi_mask)
+
+        if use_hursmin and 'hursmin' in year_dict:
+            print("using hursmin")
+            rh = _check_and_convert_units(da=year_dict['hursmin'], input_var="hursmin", conv_type="%").where(~fwi_mask)
+        else:
+            print("using hurs")
+            rh = _check_and_convert_units(da=year_dict['hurs'], input_var="hurs", conv_type="%").where(~fwi_mask)
+        rh = rh.clip(0, 100)
+
+        lat = TX.lat
+        time = TX.time
+        if hasattr(time, 'dt'):
+            month = time.dt.month
+        else:
+            month = xr.DataArray(
+                [(i // 30) % 12 + 1 for i in range(len(time))],
+                dims=['time'], coords={'time': time},
+            )
+
+        day_length = xr.concat(
+            [_get_day_length_factor(lat, m) for m in month.values],
+            dim='time',
         )
+        day_length['time'] = time
 
-    day_length = xr.concat(
-        [_get_day_length_factor(lat, m) for m in month.values],
-        dim='time',
-    )
-    day_length['time'] = time
+        template = TX * 0
+        ffmc = template.copy()
+        dmc = template.copy()
+        dc = template.copy()
+        isi = template.copy()
+        bui = template.copy()
+        fwi = template.copy()
 
-    if init_values is None:
-        init_values = {'ffmc': 85.0, 'dmc': 6.0, 'dc': 15.0}
+        n_times = len(TX.time)
+        print(f"  {n_times} time steps...")
 
-    template = TX * 0
-    ffmc = template.copy()
-    dmc = template.copy()
-    dc = template.copy()
-    isi = template.copy()
-    bui = template.copy()
-    fwi = template.copy()
+        for i in range(n_times):
+            t = TX.isel(time=i)
+            r = rh.isel(time=i)
+            w = wind.isel(time=i)
+            p = precip.isel(time=i)
+            dl = day_length.isel(time=i)
+            m = month.isel(time=i)
 
-    n_times = len(TX.time)
-    print(f"processing {n_times} time steps...")
+            ffmc_prev = init['ffmc'] if i == 0 else ffmc.isel(time=i - 1)
+            dmc_prev = init['dmc'] if i == 0 else dmc.isel(time=i - 1)
+            dc_prev = init['dc'] if i == 0 else dc.isel(time=i - 1)
 
-    for i in range(n_times):
-        if i % 365 == 0:
-            print(f"  day {i}/{n_times}")
+            ffmc[dict(time=i)] = _ffmc_step(t, r, w, p, ffmc_prev)
+            dmc[dict(time=i)] = _dmc_step(t, r, p, dmc_prev, dl)
+            dc[dict(time=i)] = _dc_step(t, p, dc_prev, dl, m, lat)
+            isi[dict(time=i)] = _isi_from_ffmc(w, ffmc.isel(time=i))
+            bui[dict(time=i)] = _bui_from_codes(dmc.isel(time=i), dc.isel(time=i))
+            fwi[dict(time=i)] = _fwi_from_isi_bui(isi.isel(time=i), bui.isel(time=i))
 
-        t = TX.isel(time=i)
-        r = rh.isel(time=i)
-        w = wind.isel(time=i)
-        p = precip.isel(time=i)
-        dl = day_length.isel(time=i)
-        m = month.isel(time=i)
+        init = {
+            'ffmc': ffmc.isel(time=-1),
+            'dmc':  dmc.isel(time=-1),
+            'dc':   dc.isel(time=-1),
+        }
+        results.append(fwi)
+        del year_dict
 
-        ffmc_prev = init_values['ffmc'] if i == 0 else ffmc.isel(time=i - 1)
-        dmc_prev = init_values['dmc'] if i == 0 else dmc.isel(time=i - 1)
-        dc_prev = init_values['dc'] if i == 0 else dc.isel(time=i - 1)
-
-        ffmc[dict(time=i)] = _ffmc_step(t, r, w, p, ffmc_prev)
-        dmc[dict(time=i)] = _dmc_step(t, r, p, dmc_prev, dl)
-        dc[dict(time=i)] = _dc_step(t, p, dc_prev, dl, m, lat)
-        isi[dict(time=i)] = _isi_from_ffmc(w, ffmc.isel(time=i))
-        bui[dict(time=i)] = _bui_from_codes(dmc.isel(time=i), dc.isel(time=i))
-        fwi[dict(time=i)] = _fwi_from_isi_bui(isi.isel(time=i), bui.isel(time=i))
-
-    return fwi
+    return xr.concat(results, dim='time')
 
 
 def FWI(ds_dict, use_hursmin=True, init_values=None,
