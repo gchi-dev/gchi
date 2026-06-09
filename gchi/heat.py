@@ -537,15 +537,16 @@ def Hu(ds_dict, severity_thresholds=None):
     return _add_metric_metadata(result, "Hu", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
-def WBT(ds_dict, severity_thresholds=None):
+def WBT(ds_dict, severity_thresholds=None, Twb=None):
     """
     Wet Bulb Temperature exceedance levels via NEWT (Rogers & Warren 2024).
     Call wbt_values() to get raw WBT without level assignment.
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["WBT"]
-    Twp = _wbt_values(ds_dict)
-    WBT_levels = _annual_exceedance_frac(Twp, severity_thresholds, var_name="WBT")
+    if Twb is None: # if you do not want to re-calculate WBT for WBGT, you should calculate WBT from wbt_values beforehand, then pass as arg 
+        Twb = _wbt_values(ds_dict)
+    WBT_levels = _annual_exceedance_frac(Twb, severity_thresholds, var_name="WBT")
     result = _assign_severity_level(WBT_levels)
     return _add_metric_metadata(result, "WBT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes="WBT via NEWT pseudo wet-bulb temperature (Rogers & Warren 2024)")
 
@@ -555,13 +556,14 @@ def wbt_values(ds_dict):
     return _wbt_values(ds_dict)
 
 
-def wbgt_values(ds_dict):
+def wbgt_values(ds_dict, Twb=None):
     """
     WBGT (°C).
     Default: Brimicombe et al. 2023 approach using NEWT for WBT.
     Fallback: Schwingshackl et al. 2021 approximation if MRT vars not available.
     """
-    Twb = _wbt_values(ds_dict)
+    if Twb is None:
+        Twb = _wbt_values(ds_dict)
     TX = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
     TA = _check_and_convert_units(da=ds_dict['tas'], input_var="tas", conv_type="C")
 
@@ -574,11 +576,11 @@ def wbgt_values(ds_dict):
         return 0.7 * Twb + 0.3 * TX
 
 
-def WBGT(ds_dict, severity_thresholds=None):
+def WBGT(ds_dict, severity_thresholds=None, Twb=None):
     """WBGT exceedance levels. Call wbgt_values() to get raw WBGT."""
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["WBGT"]
-    WBGT_val = wbgt_values(ds_dict)
+    WBGT_val = wbgt_values(ds_dict, Twb=Twb)
     WBGT_levels = _annual_exceedance_frac(WBGT_val, severity_thresholds, var_name="WBGT")
     result = _assign_severity_level(WBGT_levels)
     return _add_metric_metadata(result, "WBGT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes="if MRT vars not in ds_dict, falls back to Schwingshackl 2021 approximation using tasmax as dry bulb")
