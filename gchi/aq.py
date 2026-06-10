@@ -62,6 +62,23 @@ def o3_values(ds_dict):
     if convert_o3:
         T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="K")
         ps = _check_and_convert_units(da=ds_dict["ps"], input_var="ps", conv_type="Pa")
+        
+        # detect resolution before collapsing
+        is_daily = _detect_daily(O3)
+        if is_daily:
+            print("  PM2pt5: detected daily input")
+        else:
+            print("  PM2pt5: detected monthly input -- ensuring ps/T are monthly")
+            # it is possible that ps/tas daily may be pulled for monthly PM. must get monthly averages
+            # always collapse to monthly
+            T = T.resample(time="1ME").mean()
+            ps = ps.resample(time="1ME").mean()
+            try: 
+                T["time"] = O3["time"].values
+                ps["time"] = O3["time"].values
+            except:
+                print("ps/T time dim don't align with O3 time") # for production, make this more elegant. 
+
         M_O3 = 48    # molecular weight of ozone g/mol
         R = 8.314    # J/(mol·K)
         O3 = 1e6 * (O3 * (M_O3 * ps) / (R * T))
@@ -103,12 +120,12 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file=None, mda8_scale_varna
         print("  O3: detected daily input -- using O3day thresholds")
     else:
         print("  O3: detected monthly input -- using O3mon thresholds")
+        # always collapse to monthly
+        O3_val = O3_val.resample(time="1ME").mean().load()
 
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["O3day"] if is_daily else _default_thresholds["O3mon"]
 
-    # always collapse to monthly
-    O3_val = O3_val.resample(time="1ME").mean().load()
 
     if mda8_scale_file is None:
         print("  mda8_scale_file not provided -- skipping MDA8 scaling. using raw monthly O3.")
@@ -158,6 +175,23 @@ def pm25_values(ds_dict):
 
     T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="K")
     ps = _check_and_convert_units(da=ds_dict["ps"], input_var="ps", conv_type="Pa")
+
+    # detect resolution before collapsing
+    is_daily = _detect_daily(BC)
+    if is_daily:
+        print("  PM2pt5: detected daily input")
+    else:
+        print("  PM2pt5: detected monthly input -- ensuring ps/T are monthly")
+        # it is possible that ps/tas daily may be pulled for monthly PM. must get monthly averages
+        # always collapse to monthly
+        T = T.resample(time="1ME").mean()
+        ps = ps.resample(time="1ME").mean()
+        try: 
+            T["time"] = BC["time"].values
+            ps["time"] = BC["time"].values
+        except:
+            print("ps/T time dim don't align with PM time") # for production, make this more elegant. 
+
     rho = ps / (287 * T)
 
     pm2pt5 = BC + OA + SO4 + (0.25 * SS) + (0.1 * DU)
@@ -188,12 +222,11 @@ def PM2pt5(ds_dict, severity_thresholds=None):
         print("  PM2pt5: detected daily input -- using PM2pt5day thresholds")
     else:
         print("  PM2pt5: detected monthly input -- using PM2pt5mon thresholds")
+        # always collapse to monthly
+        pm2pt5 = pm2pt5.resample(time="1ME").mean()
 
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["PM2pt5day"] if is_daily else _default_thresholds["PM2pt5mon"]
-
-    # always collapse to monthly
-    pm2pt5 = pm2pt5.resample(time="1ME").mean()
 
     pm2pt5_levels = _annual_exceedance_frac_aq(pm2pt5, severity_thresholds=severity_thresholds, var_name="PM2pt5")
     result = _assign_severity_level(pm2pt5_levels)
