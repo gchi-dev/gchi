@@ -565,9 +565,9 @@ def wbgt_values(ds_dict, Twb=None):
     if Twb is None:
         Twb = _wbt_values(ds_dict)
     TX = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
-    TA = _check_and_convert_units(da=ds_dict['tas'], input_var="tas", conv_type="C")
 
     if _has_mrt_vars(ds_dict):
+        TA = _check_and_convert_units(da=ds_dict['tas'], input_var="tas", conv_type="C")
         tmrt = _calculate_mrt(ds_dict)
         bgt = _calculate_bgt(ds_dict=ds_dict, mrt=tmrt) - 273.15
         return 0.7 * Twb + 0.2 * bgt + 0.1 * TA
