@@ -179,7 +179,6 @@ def pm25_values(ds_dict):
 
     T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="K")
     ps = _check_and_convert_units(da=ds_dict["ps"], input_var="ps", conv_type="Pa")
-    huss = _check_and_convert_units(da=ds_dict["huss"], input_var="huss", conv_type="fraction")
 
     # detect resolution before collapsing
     is_daily = _detect_daily(BC)
@@ -191,16 +190,13 @@ def pm25_values(ds_dict):
         # always collapse to monthly
         T = T.resample(time="1ME").mean()
         ps = ps.resample(time="1ME").mean()
-        huss = huss.resample(time="1ME").mean()
         try: 
             T["time"] = BC["time"].values
             ps["time"] = BC["time"].values
-            huss["time"] = BC["time"].values
         except:
             print("ps/T time dim don't align with PM time") # for production, make this more elegant. 
 
-    Tv = T * (1 + 0.608 * huss)  # virtual temp
-    rho = ps / (287 * Tv)
+    rho = ps / (287 * T)
 
     pm2pt5 = BC + OA + SO4 + (0.25 * SS) + (0.1 * DU)
     return (pm2pt5 * rho) * 1e9  # kg kg-1 * kg m-3 -> ug m-3
