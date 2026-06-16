@@ -3,6 +3,9 @@ drought metrics: CDD, SPI, SPEI
 
 all work well chunked spatially.
 SPI and SPEI use apply_ufunc with dask="parallelized".
+
+Portions of this file are adapted from climate_indices (James Adams, 2017; https://github.com/monocongo/climate_indices)
+Licensed under BSD-3-Clause — see LICENSES/BSD-3-climate_indices.txt
 """
 
 import numpy as np

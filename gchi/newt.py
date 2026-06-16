@@ -2,7 +2,8 @@ import numpy as np
 from numba import vectorize
 
 # Application of Noniterative Noniterative Evaluation of Wet-bulb Temperature (NEWT) method (Rogers and Warren, 2023; https://essopenarchive.org/users/714325/articles/698601-fast-and-accurate-calculation-of-wet-bulb-temperature-for-humid-heat-extremes?commit=a888ca0a0d28f09b4b49826f987739fa5180ebec).
-# Adapted from Rob Warren's atmos library (https://github.com/AusClimateService/atmos)
+# # Portions of this file are adapted from rob-warren/atmos (Rob Warren) (https://github.com/AusClimateService/atmos)
+# Licensed under CC-BY-4.0 — see LICENSES/CC-BY-4.0-atmos.txt
 
 # ── Constants ────────────────────────────────────────────────────────────────
 """
