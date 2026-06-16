@@ -3,9 +3,6 @@ drought metrics: CDD, SPI, SPEI
 
 all work well chunked spatially.
 SPI and SPEI use apply_ufunc with dask="parallelized".
-
-Portions of this file are adapted from climate_indices (James Adams, 2017; https://github.com/monocongo/climate_indices)
-Licensed under BSD-3-Clause — see LICENSES/BSD-3-climate_indices.txt
 """
 
 import numpy as np
@@ -17,6 +14,9 @@ from ._core import (
     _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds
+from climate_indices import lmoments
+import logging
+logging.getLogger("climate_indices.lmoments").setLevel(logging.CRITICAL)
 
 def _extract_da(val, var_name):
     """
@@ -130,8 +130,8 @@ def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
         dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},
     )
     SPI_val = SPI_val.assign_coords(time=study_acc.time)
-    SPI_val = SPI_val.where(~_nan_mask(study_pr))
     SPI_levels = _annual_exceedance_frac(SPI_val, severity_thresholds=severity_thresholds, var_name="SPI", exceedance_dir="below")
+    SPI_levels = SPI_levels.where(~_nan_mask(study_pr))
     result = _assign_severity_level(SPI_levels)
     return _add_metric_metadata(result, "SPI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"gamma distribution fitted per calendar month to base period pr. timescale={timescale} months.")
  
@@ -156,17 +156,19 @@ def SPEI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
         severity_thresholds = _default_thresholds["SPEI"]
  
     PR_base         = _check_and_convert_units(da=base_dict['pr'],         input_var="pr",         conv_type="mm day-1")
+    PR_base = PR_base.where(PR_base > 0, 0) # set any model artifact negative pr rates to 0
     EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
     base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
  
     PR         = _check_and_convert_units(da=_extract_da(ds_dict['pr'],         'pr'),         input_var="pr",         conv_type="mm day-1")
+    PR = PR.where(PR > 0, 0) # set any model artifact negative pr rates to 0
     EVSPSBLPOT = _check_and_convert_units(da=_extract_da(ds_dict['evspsblpot'], 'evspsblpot'), input_var="evspsblpot", conv_type="mm day-1")
     study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
  
     base_months  = xr.ones_like(base_acc)  * xr.DataArray(base_acc.time.dt.month.values,  dims="time")
     study_months = xr.ones_like(study_acc) * xr.DataArray(study_acc.time.dt.month.values, dims="time")
- 
-    def _fit_and_apply_genlog(hist_data, hist_months, study_data, study_months):
+    
+    def _fit_and_apply_pearson3(hist_data, hist_months, study_data, study_months):
         out = np.full(study_data.shape, np.nan)
         for month in range(1, 13):
             hist_m = hist_data[hist_months == month]
@@ -175,16 +177,19 @@ def SPEI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
                 continue
             study_sel  = (study_months == month) & ~np.isnan(study_data)
             study_vals = study_data[study_sel]
-            # genlogistic is defined over all reals — no zero-mass adjustment needed
-            params = stats.genlogistic.fit(hist_m)
-            cdf    = stats.genlogistic.cdf(study_vals, *params)
-            spei   = stats.norm.ppf(np.clip(cdf, 1e-6, 1.0 - 1e-6))
-            spei   = np.where(np.isinf(spei), np.nan, spei)
+            # L-moments estimation following climate_indices methodology
+            # params = lmoments.fit(hist_m + 1000.0)
+            try:
+                params = lmoments.fit(hist_m + 1000.0)
+            except ValueError:
+                continue
+            cdf        = stats.pearson3.cdf(study_vals + 1000.0, params['skew'], loc=params['loc'], scale=params['scale'])
+            spei       = stats.norm.ppf(np.clip(cdf, 1e-6, 1.0 - 1e-6))
+            spei       = np.where(np.isinf(spei), np.nan, spei)
             out[study_sel] = np.clip(spei, -3.09, 3.09)
         return out
- 
     SPEI_val = xr.apply_ufunc(
-        _fit_and_apply_genlog,
+        _fit_and_apply_pearson3,
         base_acc, base_months, study_acc, study_months,
         input_core_dims=[['time'], ['time'], ['time'], ['time']],
         output_core_dims=[['time']],
@@ -195,7 +200,7 @@ def SPEI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
         dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},
     )
     SPEI_val = SPEI_val.assign_coords(time=study_acc.time)
-    SPEI_val = SPEI_val.where(~_nan_mask(PR))
     SPEI_levels = _annual_exceedance_frac(SPEI_val, severity_thresholds=severity_thresholds, var_name="SPEI", exceedance_dir="below")
+    SPEI_levels = SPEI_levels.where(~_nan_mask(study_acc))
     result = _assign_severity_level(SPEI_levels)
     return _add_metric_metadata(result, "SPEI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"generalised logistic fitted per calendar month to P-PET. timescale={timescale} months. PET var: evspsblpot.")
