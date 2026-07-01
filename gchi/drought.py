@@ -254,8 +254,9 @@ def SPEI(ds_dict, base_dict, timescale=6, distribution="pearson3", severity_thre
     PR_base         = _check_and_convert_units(da=base_dict['pr'],         input_var="pr",         conv_type="mm day-1")
     EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
     base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
-
-    PR_raw     = _check_and_convert_units(da=_extract_da(ds_dict['pr'],         'pr'),         input_var="pr",         conv_type="mm day-1")
+    
+    PR_raw = ds_dict['pr']
+    PR     = _check_and_convert_units(da=_extract_da(ds_dict['pr'],         'pr'),         input_var="pr",         conv_type="mm day-1")
     EVSPSBLPOT = _check_and_convert_units(da=_extract_da(ds_dict['evspsblpot'], 'evspsblpot'), input_var="evspsblpot", conv_type="mm day-1")
     study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
 
