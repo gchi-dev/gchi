@@ -51,7 +51,7 @@ from .aq import (
 from .drought import (
     CDD, cdd_values,
     SPI,
-    SPEI,
+    SMSXp,
 )
 
 # disease
@@ -106,7 +106,7 @@ __all__ = [
     # drought
     "CDD", "cdd_values",
     "SPI",
-    "SPEI",
+    "SMSXp",
     # disease
     "VSmalaria",
     "VSzika",

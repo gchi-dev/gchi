@@ -1,16 +1,13 @@
 """
-drought metrics: CDD, SPI, SPEI
+drought metrics: CDD, SPI, SMSXp
 
 all work well chunked spatially.
-SPI and SPEI use apply_ufunc with dask="parallelized".
+SPI uses apply_ufunc with dask="parallelized".
 """
 
 import numpy as np
 import xarray as xr
-from scipy import stats, special
-from climate_indices import lmoments
-import logging
-logging.getLogger("climate_indices").setLevel(logging.CRITICAL)
+from scipy import stats
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level,
@@ -135,195 +132,62 @@ def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
     result = _assign_severity_level(SPI_levels)
     return _add_metric_metadata(result, "SPI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"gamma distribution fitted per calendar month to base period pr. timescale={timescale} months.")
  
-# def SPEI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
-#     """
-#     Standardized Precipitation-Evapotranspiration Index.
-#     Fits a log-logistic distribution per calendar month to the water balance (P - PET)
-#     over the base period and applies it to the study period.
-#     Follows Vicente-Serrano et al. (2010) methodology. Distribution fitting via
-#     L-moments using the unbiased PWM estimator, translated from the original
-#     C source code (Vicente-Serrano et al. 2010, http://hdl.handle.net/10261/10006).
-
-#     Parameters
-#     ----------
-#     base_dict : dict
-#         needs 'pr' and 'evspsblpot'
-#     ds_dict : dict
-#         needs 'pr' and 'evspsblpot'
-#     timescale : int
-#         accumulation timescale in months (default 6)
-#     """
-#     if severity_thresholds is None:
-#         severity_thresholds = _default_thresholds["SPEI"]
-
-#     PR_base         = _check_and_convert_units(da=base_dict['pr'],         input_var="pr",         conv_type="mm day-1")
-#     EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
-#     base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
-
-#     PR         = _check_and_convert_units(da=_extract_da(ds_dict['pr'],         'pr'),         input_var="pr",         conv_type="mm day-1")
-#     EVSPSBLPOT = _check_and_convert_units(da=_extract_da(ds_dict['evspsblpot'], 'evspsblpot'), input_var="evspsblpot", conv_type="mm day-1")
-#     study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
-
-#     # persist so rolling sums aren't recomputed inside apply_ufunc
-#     base_acc  = base_acc.compute()
-#     study_acc = study_acc.compute()
-
-#     base_months  = xr.ones_like(base_acc)  * xr.DataArray(base_acc.time.dt.month.values,  dims="time")
-#     study_months = xr.ones_like(study_acc) * xr.DataArray(study_acc.time.dt.month.values, dims="time")
-
-#     def _fit_and_apply_loglogistic(hist_data, hist_months, study_data, study_months):
-#         out = np.full(study_data.shape, np.nan)
-#         for month in range(1, 13):
-#             hist_m = hist_data[hist_months == month]
-#             hist_m = np.sort(hist_m[~np.isnan(hist_m)])
-#             if len(hist_m) < 4:
-#                 continue
-#             if np.std(hist_m) == 0:  
-#                 continue
-#             study_sel  = (study_months == month) & ~np.isnan(study_data)
-#             study_vals = study_data[study_sel]
-#             if len(study_vals) == 0:
-#                 continue
-#             # probability weighted moments — unbiased estimator (A=B=0), alpha PWMs
-#             #  translation of Vicente-Serrano et al. C source (spei.c / pdfs.c)
-#             n     = len(hist_m)
-#             i     = np.arange(1, n + 1)
-#             b0    = np.sum(hist_m) / n
-#             b1    = np.sum(hist_m * (n - i))                  / n / (n - 1)
-#             b2    = np.sum(hist_m * (n - i) * (n - i - 1))    / n / ((n - 1) * (n - 2))
-#             beta  = (2 * b1 - b0) / (6 * b1 - b0 - 6 * b2)
-#             if not np.isfinite(beta) or beta <= 0:
-#                 continue
-#             g1    = np.exp(special.gammaln(1 + 1 / beta))
-#             g2    = np.exp(special.gammaln(1 - 1 / beta))
-#             alpha = (b0 - 2 * b1) * beta / (g1 * g2)
-#             gamma = b0 - alpha * g1 * g2
-#             # log-logistic CDF (logLogisticCDF in pdfs.c)
-#             # values below origin parameter gamma assigned minimum probability
-#             denom = study_vals - gamma
-#             cdf   = np.where(denom > 0, 1.0 / (1.0 + (alpha / denom) ** beta), np.nan)
-#             spei  = stats.norm.ppf(np.clip(cdf, 1e-6, 1.0 - 1e-6))
-#             spei  = np.where(np.isfinite(spei), spei, np.nan)
-#             out[study_sel] = np.clip(spei, -3.09, 3.09)
-#         return out
-
-#     SPEI_val = xr.apply_ufunc(
-#         _fit_and_apply_loglogistic,
-#         base_acc, base_months, study_acc, study_months,
-#         input_core_dims=[['time'], ['time'], ['time'], ['time']],
-#         output_core_dims=[['time']],
-#         exclude_dims=set(("time",)),
-#         vectorize=True,
-#         dask="parallelized",
-#         output_dtypes=[float],
-#         dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},
-#     )
-
-#     SPEI_val = SPEI_val.assign_coords(time=study_acc.time)
-#     SPEI_levels = _annual_exceedance_frac(SPEI_val, severity_thresholds=severity_thresholds, var_name="SPEI", exceedance_dir="below")
-#     SPEI_levels = SPEI_levels.where(~_nan_mask(PR))
-#     result = _assign_severity_level(SPEI_levels)
-#     return _add_metric_metadata(result, "SPEI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"log-logistic distribution fitted per calendar month to P-PET via L-moments (Vicente-Serrano et al. 2010). timescale={timescale} months. PET var: evspsblpot.")
-
-def SPEI(ds_dict, base_dict, timescale=6, distribution="pearson3", severity_thresholds=None):
+def SMSXp(ds_dict, base_dict, severity_thresholds=None):
     """
-    Standardized Precipitation-Evapotranspiration Index.
-    Fits a distribution per calendar month to the water balance (P - PET)
-    over the base period and applies it to the study period.
-    Follows Vicente-Serrano et al. (2010) methodology.
-
-    Parameters
-    ----------
-    base_dict : dict
-        needs 'pr' and 'evspsblpot'
-    ds_dict : dict
-        needs 'pr' and 'evspsblpot'
-    timescale : int
-        accumulation timescale in months (default 6)
-    distribution : str
-        distribution to fit. 'pearson3' (default, Pearson Type III via L-moments,
-        climate_indices) or 'loglogistic' (log-logistic via L-moments,
-        Vicente-Serrano et al. 2010 C source)
+    Days where daily surface soil moisture (mrsos) < Xth percentile of base
+    period mrsos. Same method as TNXp — spatially varying thresholds, bespoke
+    exceedance method but no unit conversion applied because thresholds relative to base (assuming same units)
     """
     if severity_thresholds is None:
-        severity_thresholds = _default_thresholds["SPEI"]
+        severity_thresholds = _default_thresholds["SMSXp"]
 
-    if distribution not in ("pearson3", "loglogistic"):
-        raise ValueError(f"distribution must be 'pearson3' or 'loglogistic', got '{distribution}'")
+    SM = ds_dict["mrsos"]
+    nan_mask = _nan_mask(SM)
+    steps_per_year = _get_tsteps(SM)
 
-    PR_base         = _check_and_convert_units(da=base_dict['pr'],         input_var="pr",         conv_type="mm day-1")
-    EVSPSBLPOT_base = _check_and_convert_units(da=base_dict['evspsblpot'], input_var="evspsblpot", conv_type="mm day-1")
-    base_acc = (PR_base - EVSPSBLPOT_base).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
-    
-    PR_raw = ds_dict['pr']
-    PR     = _check_and_convert_units(da=_extract_da(ds_dict['pr'],         'pr'),         input_var="pr",         conv_type="mm day-1")
-    EVSPSBLPOT = _check_and_convert_units(da=_extract_da(ds_dict['evspsblpot'], 'evspsblpot'), input_var="evspsblpot", conv_type="mm day-1")
-    study_acc = (PR - EVSPSBLPOT).resample(time="1ME").sum().chunk({"time": -1}).rolling(time=timescale, min_periods=timescale).sum().dropna('time')
-
-    # persist so rolling sums aren't recomputed inside apply_ufunc
-    base_acc  = base_acc.compute()
-    study_acc = study_acc.compute()
-
-    base_months  = xr.ones_like(base_acc)  * xr.DataArray(base_acc.time.dt.month.values,  dims="time")
-    study_months = xr.ones_like(study_acc) * xr.DataArray(study_acc.time.dt.month.values, dims="time")
-
-    def _fit_and_apply(hist_data, hist_months, study_data, study_months):
-        out = np.full(study_data.shape, np.nan)
-        for month in range(1, 13):
-            hist_m = hist_data[hist_months == month]
-            hist_m = np.sort(hist_m[~np.isnan(hist_m)])
-            if len(hist_m) < 4:
-                continue
-            study_sel  = (study_months == month) & ~np.isnan(study_data)
-            study_vals = study_data[study_sel]
-            if len(study_vals) == 0:
-                continue
-            if distribution == "pearson3":
-                # Pearson Type III via L-moments following climate_indices methodology
-                try:
-                    params = lmoments.fit(hist_m + 1000.0)
-                except ValueError:
-                    continue
-                cdf  = stats.pearson3.cdf(study_vals + 1000.0, params['skew'], loc=params['loc'], scale=params['scale'])
-            else:
-                # log-logistic via L-moments, translated from Vicente-Serrano et al. C source (spei.c / pdfs.c)
-                if np.std(hist_m) == 0:
-                    continue
-                n     = len(hist_m)
-                i     = np.arange(1, n + 1)
-                b0    = np.sum(hist_m) / n
-                b1    = np.sum(hist_m * (n - i))               / n / (n - 1)
-                b2    = np.sum(hist_m * (n - i) * (n - i - 1)) / n / ((n - 1) * (n - 2))
-                beta  = (2 * b1 - b0) / (6 * b1 - b0 - 6 * b2)
-                if not np.isfinite(beta) or beta <= 0:
-                    continue
-                g1    = np.exp(special.gammaln(1 + 1 / beta))
-                g2    = np.exp(special.gammaln(1 - 1 / beta))
-                alpha = (b0 - 2 * b1) * beta / (g1 * g2)
-                gamma = b0 - alpha * g1 * g2
-                # log-logistic CDF (logLogisticCDF in pdfs.c)
-                # values below origin parameter gamma assigned minimum probability
-                denom = study_vals - gamma
-                cdf   = np.where(denom > 0, 1.0 / (1.0 + (alpha / denom) ** beta), 1e-6)
-            spei = stats.norm.ppf(np.clip(cdf, 1e-6, 1.0 - 1e-6))
-            spei = np.where(np.isfinite(spei), spei, np.nan)
-            out[study_sel] = np.clip(spei, -3.09, 3.09)
-        return out
-
-    SPEI_val = xr.apply_ufunc(
-        _fit_and_apply,
-        base_acc, base_months, study_acc, study_months,
-        input_core_dims=[['time'], ['time'], ['time'], ['time']],
-        output_core_dims=[['time']],
-        exclude_dims=set(("time",)),
-        vectorize=True,
-        dask="parallelized",
-        output_dtypes=[float],
-        dask_gufunc_kwargs={"output_sizes": {"time": len(study_acc.time)}},
+    mrsos_base_percentile_vals = [
+        float(k.split("_")[1].replace("pt", ".").replace("p", ""))
+        for k in base_dict.keys() if k.startswith('mrsos_') and k.endswith('p')
+    ]
+    mrsos_base_percentile_keys = sorted(
+        [k for k in base_dict.keys() if k.startswith('mrsos_') and k.endswith('p')],
+        key=lambda k: float(k.replace('mrsos_', '').replace('pt', '.').replace('p', '')),
+        reverse=True,
     )
 
-    SPEI_val = SPEI_val.assign_coords(time=study_acc.time)
-    SPEI_levels = _annual_exceedance_frac(SPEI_val, severity_thresholds=severity_thresholds, var_name="SPEI", exceedance_dir="below")
-    SPEI_levels = SPEI_levels.where(~_nan_mask(PR_raw))
-    result = _assign_severity_level(SPEI_levels)
-    return _add_metric_metadata(result, "SPEI", ds_dict, severity_thresholds=severity_thresholds, units="standardised index (dimensionless)", notes=f"{distribution} distribution fitted per calendar month to P-PET. timescale={timescale} months. PET var: evspsblpot.")
+    if sorted(mrsos_base_percentile_vals) != sorted(severity_thresholds):
+        print(
+            f"cannot calculate SMSXp — base period mrsos percentiles don't match severity_thresholds.\n"
+            f"base period: {mrsos_base_percentile_vals}. thresholds: {severity_thresholds}. skipping..."
+        )
+        return None
+
+    n = len(mrsos_base_percentile_keys)
+    da_list = []
+    for key in mrsos_base_percentile_keys:
+        th = base_dict[key]
+        da_count = (SM < th).resample(time='1YE').sum(dim='time', skipna=True)
+        da_list.append(da_count)
+
+    SMSXp_val = xr.concat(da_list, dim='level')
+    SMSXp_val = SMSXp_val.assign_coords(level=np.arange(1, n + 1))
+    SMSXp_val = _ann_frac(SMSXp_val, steps_per_year).rename("SMSXp")
+
+    severity_level = xr.zeros_like(SMSXp_val.isel(level=0).drop_vars("level"), dtype=int)
+    for i, p in enumerate(mrsos_base_percentile_vals):
+        frac_thresh = p / 100
+        level_coord = i + 1
+        exceeds = SMSXp_val.sel(level=level_coord) > frac_thresh
+        severity_level = severity_level.where(~exceeds, other=level_coord)
+
+    severity_level = severity_level.where(SMSXp_val.notnull().any("level"))
+    severity_level.name = "SMSXp_severity_level"
+    SMSXp_val = xr.merge([SMSXp_val, severity_level], compat="override")
+    SMSXp_val = SMSXp_val.where(~nan_mask)
+    SMSXp_val.attrs['level_thresholds'] = [
+        {"level": int(i + 1), "threshold_value": mrsos_base_percentile_vals[i],
+         "unit": "percentile", "source": "base period distribution"}
+        for i in range(len(mrsos_base_percentile_keys))
+    ]
+    return _add_metric_metadata(SMSXp_val, "SMSXp", ds_dict, units="fraction of year",
+                                 notes="days below base period mrsos percentile thresholds. spatially varying thresholds. no unit conversion applied.")

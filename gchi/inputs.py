@@ -247,7 +247,7 @@ def calculate_base_period_percentiles(
 ):
     """
     Calculate climatological percentile thresholds over a base period.
-    Used by HWF, TNXp, PR1day, PR5day, SPI, SPEI.
+    Used by HWF, TNXp, PR1day, PR5day, SPI, SMSXp.
 
     Run prepare_inputs(ds_dict) before calling this for best performance.
     All operations are dask-native -- no data loaded into memory until .compute().
@@ -428,6 +428,20 @@ def calculate_base_period_percentiles(
                 f"all-year {p}th percentile of 5-day rolling precipitation sums "
                 f"(wet windows only). one value per grid cell."
             ),
+        ))
+    if mrsos is not None:
+        print("calculating mrsos base period percentiles...")
+        mrsos_base, actual_start, actual_end = _slice_to_base(mrsos, "mrsos")  # no unit conversion
+        mrsos_base = mrsos_base.chunk({"time": -1})
+
+        q_vals = [p / 100.0 for p in mrsos_percentiles]
+        smp_all = mrsos_base.quantile(q_vals, dim="time", skipna=True)
+        base_dict.update(_unpack_quantiles(
+            smp_all, mrsos_percentiles,
+            key_fmt=lambda p: f"mrsos_{str(p).replace('.', 'pt')}p",
+            units="native (no conversion applied)", var_name="mrsos",
+            actual_start=actual_start, actual_end=actual_end,
+            notes_fmt=lambda p: f"all-year {p}th percentile of mrsos. one value per grid cell. no unit conversion.",
         ))
 
     print(f"base period percentiles complete. keys: {list(base_dict.keys())}")

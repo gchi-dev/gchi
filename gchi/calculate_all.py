@@ -24,7 +24,7 @@ from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR
 from .cold import UTCIcold, TNXp
 from .fire import FI, HDW, FWI
 from .aq import O3, PM2pt5
-from .drought import CDD, SPI, SPEI
+from .drought import CDD, SPI, SMSXp
 from .disease import VSmalaria, VSzika, VSdengueAeg, VSdengueAlb, VbrS
 from .weather import PRXmm, PR1day, PR5day
 
@@ -50,7 +50,7 @@ _REQUIRED_VARS = {
     "PM2pt5":      {"mmrbc", "mmrdust", "mmroa", "mmrso4", "mmrss", "tas", "ps"},
     "CDD":         {"pr"},
     "SPI":         {"pr"},
-    "SPEI":        {"pr", "evspsblpot"},
+    "SMSXp":       {"mrsos"},
     "VSmalaria":   {"tas"},
     "VSzika":      {"tas"},
     "VSdengueAeg": {"tas"},
@@ -67,7 +67,7 @@ _REQUIRED_BASE = {
     "HWF":    {"tas"},       # also needs t{p}p_calday, checked at runtime
     "TNXp":   set(),         # checked at runtime (needs tasmin_{p}p keys)
     "SPI":    {"pr"},
-    "SPEI":   {"pr", "evspsblpot"},
+    "SMSXp":   set(),       # checked at runtime (needs mrsos_{p}p keys)
     "PR1day": set(),         # checked at runtime (needs pr_{p}p keys)
     "PR5day": set(),         # checked at runtime (needs rx5day_{p}p keys)
 }
@@ -138,7 +138,7 @@ def calculate_all(
     ds_dict : dict
         dict of xr.DataArrays keyed by CMIP6 shortname
     base_dict : dict, optional
-        output from calculate_base_period_percentiles(). needed for HWF, TNXp, SPI, SPEI, PR1day, PR5day
+        output from calculate_base_period_percentiles(). needed for HWF, TNXp, SPI, SMSXp, PR1day, PR5day
     fwi_mask_file : str, optional
         path to infrequent burning mask file (for FWI)
     environmental_zone_file : str, optional
@@ -178,7 +178,7 @@ def calculate_all(
 
     # if base_dict is provided with raw data (tas/tasmin/pr as DataArrays or Datasets),
     # run calculate_base_period_percentiles on it to get the percentile thresholds needed
-    # by HWF, TNXp, PR1day, PR5day. SPI/SPEI use the raw pr directly from base_dict.
+    # by HWF, TNXp, PR1day, PR5day. SPI uses the raw pr directly from base_dict.
     if base_dict is not None:
         if model_grid_file is not None or not regrid:
             print("running prepare_inputs on base_dict...")
@@ -201,20 +201,23 @@ def calculate_all(
                 tas=base_dict.get("tas"),
                 tasmin=base_dict.get("tasmin"),
                 pr=base_dict.get("pr"),
+                mrsos=base_dict.get("mrsos"),
             )
-            # merge: keep raw data (for SPI/SPEI) + add computed percentiles
+            # merge: keep raw data (for SPI) + add computed percentiles
             base_dict = {**base_dict, **base_dict_pct}
     elif base_dict is None:
         from .inputs import calculate_base_period_percentiles
         has_tas    = "tas" in ds_dict
         has_tasmin = "tasmin" in ds_dict
         has_pr     = "pr" in ds_dict
-        if any([has_tas, has_tasmin, has_pr]):
+        has_mrsos = "mrsos" in ds_dict
+        if any([has_tas, has_tasmin, has_pr, has_mrsos]):
             print("base_dict not provided -- computing automatically from ds_dict...")
             base_dict = calculate_base_period_percentiles(
                 tas=ds_dict["tas"]    if has_tas    else None,
                 tasmin=ds_dict["tasmin"] if has_tasmin else None,
                 pr=ds_dict["pr"]      if has_pr     else None,
+                mrsos=ds_dict["mrsos"] if has_mrsos else None,
             )
         else:
             print("base_dict not provided and no tas/tasmin/pr in ds_dict -- skipping percentile-based metrics.")
@@ -280,7 +283,7 @@ def calculate_all(
     print("\n-- drought --")
     _run("CDD",  lambda: CDD(ds_dict))
     _run("SPI",  lambda: SPI(ds_dict, base_dict))
-    _run("SPEI", lambda: SPEI(ds_dict, base_dict))
+    _run("SMSXp", lambda: SMSXp(ds_dict, base_dict))
 
     # --- disease ---
     print("\n-- disease --")

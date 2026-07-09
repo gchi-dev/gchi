@@ -14,10 +14,6 @@ from ._core import (
 from .thresholds import severity_thresholds as _default_thresholds
 
 
-# =================
-# intermediate calculations (private)
-# these are separated so they can be computed once and reused across metrics
-# =================
 
 def _wbt_values(ds_dict):
     """
@@ -377,17 +373,8 @@ def _utci_values(ds_dict, hum_var='both', hotorcold='hot'):
     """
     Calculate UTCI index values (°C) — no exceedance or level assignment.
 
-    Parameters
-    ----------
-    ds_dict : dict
-    hum_var : str
-        'both', 'huss', or 'hurs'
-    hotorcold : str
-        'hot' uses tasmax, 'cold' uses tasmin
-
-    Returns
-    -------
-    xr.DataArray of UTCI values, masked to valid input ranges
+    adapted from thermofeel library 
+    #Brimicombe, C., Di Napoli, C., Quintino, T., Pappenberger, F., Cornforth, R., & Cloke, H. L. (2021). thermofeel: a python thermal comfort indices library https://doi.org/10.21957/mp6v-fd16
     """
     tas_var = "tasmax" if hotorcold.lower() == "hot" else "tasmin"
 
