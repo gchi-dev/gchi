@@ -14,6 +14,7 @@ _DEFAULT_PERCENTILES = {
     "pr":          [90, 95, 98, 99.5], # all-year wet-day percentiles
     "tasmin":      [10, 5, 2, 0.5],    # all-year cold-tail percentiles
     "pr5day":      [90, 95, 98, 99.5], # all 5-day rolling sum percentiles (wet windows only)
+    "mrsos":      [10, 5, 2, 0.5],    # all-year dry-tail percentiles
 }
 
 
@@ -238,11 +239,13 @@ def calculate_base_period_percentiles(
     tasmax=None,
     tasmin=None,
     pr=None,
+    mrsos=None,
     base_years=_DEFAULT_BASE_YEARS,
     tas_calday_percentiles=_DEFAULT_PERCENTILES["tas_calday"],
     pr_percentiles=_DEFAULT_PERCENTILES["pr"],
     tasmin_percentiles=_DEFAULT_PERCENTILES["tasmin"],
     pr5day_percentiles=_DEFAULT_PERCENTILES["pr5day"],
+    mrsos_percentiles=_DEFAULT_PERCENTILES["mrsos"],
     wet_day_threshold=1.0,
 ):
     """
@@ -284,8 +287,8 @@ def calculate_base_period_percentiles(
     xr.set_options(keep_attrs=True)
     base_start, base_end = int(base_years[0]), int(base_years[1])
 
-    if not any(da is not None for da in [tas, tasmax, tasmin, pr]):
-        raise ValueError("at least one of tas, tasmax, tasmin, or pr must be provided.")
+    if not any(da is not None for da in [tas, tasmax, tasmin, pr, mrsos]):
+        raise ValueError("at least one of tas, tasmax, tasmin, pr, mrsos must be provided.")
 
     def _slice_to_base(da, var_name):
         years_in_data = da.time.dt.year
