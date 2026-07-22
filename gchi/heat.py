@@ -1,6 +1,7 @@
 """
 heat stress metrics: AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR
 """
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -10,8 +11,14 @@ from . import newt
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level,
     _get_tsteps, _ann_frac, _tetens_sat_vapor_pressure, _nan_mask, _add_metric_metadata,
+    KELVIN_OFFSET,
 )
 from .thresholds import severity_thresholds as _default_thresholds
+
+# humidity input source: 'huss' (specific humidity) or 'hurs'/'both' (relative humidity)
+HumVar = Literal["both", "huss", "hurs"]
+# temperature extreme to evaluate: 'hot' uses tasmax, 'cold' uses tasmin
+TempExtreme = Literal["hot", "cold"]
 
 
 
@@ -38,7 +45,7 @@ def _wbt_values(ds_dict):
     q_vals = q.values if hasattr(q, 'values') else q
     Twp_vals = newt.pseudo_wet_bulb_temperature(p.values, TX.values, q_vals)
     Twp = TX.copy(data=Twp_vals)  # wrap back into DataArray (K)
-    return Twp - 273.15  # K to °C
+    return Twp - KELVIN_OFFSET  # K to °C
 
 
 def _scale_windspeed(va, h):
@@ -142,7 +149,7 @@ def _sat_vapor_pressure_its90(ta_celsius):
     Saturation vapor pressure (hPa) via Hardy 1998 / ITS-90.
     Used in UTCI. Translated from Bröde Fortran 2009.
     """
-    tk = ta_celsius + 273.15
+    tk = ta_celsius + KELVIN_OFFSET
     g = np.array([-2.8365744e3, -6.028076559e3, 1.954263612e1, -2.737830188e-2,
                   1.6261698e-5, 7.0229056e-10, -1.8680009e-13, 2.7150305])
     es = g[7] * np.log(tk)
@@ -369,14 +376,14 @@ def _utci_polynomial(Ta, va, D_Tmrt, Pa):
         1.48348065e-03 * Pa**6)
 
 
-def _utci_values(ds_dict, hum_var='both', hotorcold='hot'):
+def _utci_values(ds_dict, hum_var: HumVar = "both", temp_extreme: TempExtreme = "hot"):
     """
     Calculate UTCI index values (°C) — no exceedance or level assignment.
 
     adapted from thermofeel library 
     #Brimicombe, C., Di Napoli, C., Quintino, T., Pappenberger, F., Cornforth, R., & Cloke, H. L. (2021). thermofeel: a python thermal comfort indices library https://doi.org/10.21957/mp6v-fd16
     """
-    tas_var = "tasmax" if hotorcold.lower() == "hot" else "tasmin"
+    tas_var = "tasmax" if temp_extreme.lower() == "hot" else "tasmin"
 
     TXN = _check_and_convert_units(da=ds_dict[tas_var], input_var=tas_var, conv_type="C")
     TA = _check_and_convert_units(da=ds_dict['tas'], input_var="tas", conv_type="C")
@@ -404,7 +411,7 @@ def _utci_values(ds_dict, hum_var='both', hotorcold='hot'):
     Pa = es_hpa / 10.0
 
     if _has_mrt_vars(ds_dict):
-        tmrt = _calculate_mrt(ds_dict) - 273.15
+        tmrt = _calculate_mrt(ds_dict) - KELVIN_OFFSET
         D_Tmrt = (tmrt - TA).clip(-30, 70)
         UTCI = _utci_polynomial(TA, va, D_Tmrt, Pa)
         valid = (TA >= -50) & (TA <= 50)
@@ -445,7 +452,12 @@ def AT(ds_dict, severity_thresholds=None):
     AT_val = at_values(ds_dict)
     AT_levels = _annual_exceedance_frac(AT_val, severity_thresholds, var_name="AT")
     result = _assign_severity_level(AT_levels)
-    return _add_metric_metadata(result, "AT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
+    return _add_metric_metadata(
+        result, metric_name="AT", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year"
+    )
 
 
 def hi_values(ds_dict):
@@ -496,7 +508,13 @@ def HI(ds_dict, severity_thresholds=None):
     HI_val = hi_values(ds_dict)
     HI_levels = _annual_exceedance_frac(HI_val, severity_thresholds, var_name="HI")
     result = _assign_severity_level(HI_levels)
-    return _add_metric_metadata(result, "HI", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
+    return _add_metric_metadata(
+        result, 
+        metric_name="HI", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year"
+    )
 
 
 def hu_values(ds_dict):
@@ -521,7 +539,13 @@ def Hu(ds_dict, severity_thresholds=None):
     Hu_val = hu_values(ds_dict)
     Hu_levels = _annual_exceedance_frac(Hu_val, severity_thresholds, var_name="Hu")
     result = _assign_severity_level(Hu_levels)
-    return _add_metric_metadata(result, "Hu", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
+    return _add_metric_metadata(
+        result, 
+        metric_name="Hu", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year"
+    )
 
 
 def WBT(ds_dict, severity_thresholds=None, Twb=None):
@@ -535,7 +559,14 @@ def WBT(ds_dict, severity_thresholds=None, Twb=None):
         Twb = _wbt_values(ds_dict)
     WBT_levels = _annual_exceedance_frac(Twb, severity_thresholds, var_name="WBT")
     result = _assign_severity_level(WBT_levels)
-    return _add_metric_metadata(result, "WBT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes="WBT via NEWT pseudo wet-bulb temperature (Rogers & Warren 2024)")
+    return _add_metric_metadata(
+        result, 
+        metric_name="WBT", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year", 
+        notes="WBT via NEWT pseudo wet-bulb temperature (Rogers & Warren 2024)"
+    )
 
 
 def wbt_values(ds_dict):
@@ -556,11 +587,12 @@ def wbgt_values(ds_dict, Twb=None):
     if _has_mrt_vars(ds_dict):
         TA = _check_and_convert_units(da=ds_dict['tas'], input_var="tas", conv_type="C")
         tmrt = _calculate_mrt(ds_dict)
-        bgt = _calculate_bgt(ds_dict=ds_dict, mrt=tmrt) - 273.15
+        bgt = _calculate_bgt(ds_dict=ds_dict, mrt=tmrt) - KELVIN_OFFSET
+        
         return 0.7 * Twb + 0.2 * bgt + 0.1 * TA
-    else:
-        # assumes MRT == air temp (reference condition)
-        return 0.7 * Twb + 0.3 * TX
+    
+    # assumes MRT == air temp (reference condition)
+    return 0.7 * Twb + 0.3 * TX
 
 
 def WBGT(ds_dict, severity_thresholds=None, Twb=None):
@@ -570,25 +602,38 @@ def WBGT(ds_dict, severity_thresholds=None, Twb=None):
     WBGT_val = wbgt_values(ds_dict, Twb=Twb)
     WBGT_levels = _annual_exceedance_frac(WBGT_val, severity_thresholds, var_name="WBGT")
     result = _assign_severity_level(WBGT_levels)
-    return _add_metric_metadata(result, "WBGT", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes="if MRT vars not in ds_dict, falls back to Schwingshackl 2021 approximation using tasmax as dry bulb")
+    return _add_metric_metadata(
+        result, 
+        metric_name="WBGT", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year", 
+        notes="if MRT vars not in ds_dict, falls back to Schwingshackl 2021 approximation using tasmax as dry bulb"
+    )
 
 
-def utci_hot_values(ds_dict, hum_var='both'):
+def utci_hot_values(ds_dict, hum_var: HumVar = "both"):
     """Raw UTCIhot values (°C)."""
-    return _utci_values(ds_dict, hum_var=hum_var, hotorcold='hot')
+    return _utci_values(ds_dict, hum_var=hum_var, temp_extreme="hot")
 
 
-def UTCIhot(ds_dict, hum_var='both', severity_thresholds=None):
+def UTCIhot(ds_dict, hum_var: HumVar = "both", severity_thresholds=None):
     """
     UTCI heat stress exceedance levels.
     Call utci_hot_values() to get raw UTCI without level assignment.
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["UTCIhot"]
-    UTCI = _utci_values(ds_dict, hum_var=hum_var, hotorcold='hot')
+    UTCI = _utci_values(ds_dict, hum_var=hum_var, temp_extreme="hot")
     UTCI_levels = _annual_exceedance_frac(UTCI, severity_thresholds=severity_thresholds, var_name="UTCIhot")
     result = _assign_severity_level(UTCI_levels)
-    return _add_metric_metadata(result, "UTCIhot", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
+    return _add_metric_metadata(
+        result, 
+        metric_name="UTCIhot", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year"
+    )
 
 
 def HWF(ds_dict, base_dict, percentile_base=90,
@@ -657,7 +702,14 @@ def HWF(ds_dict, base_dict, percentile_base=90,
     hwf_counts = hwf_counts.where(~_nan_mask(T))
     HWF_val = _ann_frac(hwf_counts, steps_per_year).rename("HWF")
     result = _assign_severity_level(HWF_val, frac_thresholds=severity_thresholds)
-    return _add_metric_metadata(result, "HWF", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"calendar-day {percentile_base}th percentile threshold. detrend={detrend}. hwd_threshold={hwd_threshold} consecutive days")
+    return _add_metric_metadata(
+        result, 
+        metric_name="HWF", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year", 
+        notes=f"calendar-day {percentile_base}th percentile threshold. detrend={detrend}. hwd_threshold={hwd_threshold} consecutive days"
+    )
 
 
 def txc_values(ds_dict):
@@ -675,7 +727,13 @@ def TXC(ds_dict, severity_thresholds=None):
     TX = txc_values(ds_dict)
     TXC_levels = _annual_exceedance_frac(TX, severity_thresholds, var_name="TXC")
     result = _assign_severity_level(TXC_levels)
-    return _add_metric_metadata(result, "TXC", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
+    return _add_metric_metadata(
+        result, 
+        metric_name="TXC", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year"
+    )
 
 
 def tr_values(ds_dict):
@@ -696,4 +754,11 @@ def TR(ds_dict, TR_thresh=20, severity_thresholds=None):
     TR_val = TR_val.where(~_nan_mask(TN))
     TR_val = _ann_frac(TR_val, steps_per_year).rename("TR")
     result = _assign_severity_level(TR_val, frac_thresholds=severity_thresholds)
-    return _add_metric_metadata(result, "TR", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"tropical nights: tasmin > {TR_thresh} degC")
+    return _add_metric_metadata(
+        result, 
+        metric_name="TR", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year", 
+        notes=f"tropical nights: tasmin > {TR_thresh} degC"
+    )

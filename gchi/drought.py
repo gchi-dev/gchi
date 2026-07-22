@@ -5,6 +5,8 @@ all work well chunked spatially.
 SPI uses apply_ufunc with dask="parallelized".
 """
 
+import logging
+
 import numpy as np
 import xarray as xr
 from scipy import stats
@@ -14,6 +16,8 @@ from ._core import (
     _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds
+
+logger = logging.getLogger(__name__)
 
 def _extract_da(val, var_name):
     """
@@ -40,7 +44,7 @@ def cdd_values(ds_dict):
 def CDD(ds_dict, severity_thresholds=None, min_threshold=10):
     """
     Consecutive Dry Days — fraction of year that falls within dry spells of
-    at least min_threshold days (default 5).
+    at least min_threshold days (default 10).
 
     Uses a rolling window approach: counts all days that are part of a qualifying dry spell.
     """
@@ -156,7 +160,7 @@ def SMSXp(ds_dict, base_dict, severity_thresholds=None):
     )
 
     if sorted(mrsos_base_percentile_vals) != sorted(severity_thresholds):
-        print(
+        logger.info(
             f"cannot calculate SMSXp — base period mrsos percentiles don't match severity_thresholds.\n"
             f"base period: {mrsos_base_percentile_vals}. thresholds: {severity_thresholds}. skipping..."
         )
@@ -189,5 +193,10 @@ def SMSXp(ds_dict, base_dict, severity_thresholds=None):
          "unit": "percentile", "source": "base period distribution"}
         for i in range(len(mrsos_base_percentile_keys))
     ]
-    return _add_metric_metadata(SMSXp_val, "SMSXp", ds_dict, units="fraction of year",
-                                 notes="days below base period mrsos percentile thresholds. spatially varying thresholds. no unit conversion applied.")
+    return _add_metric_metadata(
+        SMSXp_val, 
+        metric_name="SMSXp", 
+        ds_dict=ds_dict, 
+        units="fraction of year",
+        notes="days below base period mrsos percentile thresholds. spatially varying thresholds. no unit conversion applied."
+    )

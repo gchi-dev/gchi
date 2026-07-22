@@ -18,6 +18,7 @@ returns a dict of {metric_name: xr.Dataset} for all metrics that ran successfull
 metrics that were skipped (missing inputs) or failed (error) are noted in the printed summary.
 """
 
+import logging
 import traceback
 
 from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR
@@ -27,6 +28,8 @@ from .aq import O3, PM2pt5
 from .drought import CDD, SPI, SMSXp
 from .disease import VSmalaria, VSzika, VSdengueAeg, VSdengueAlb, VbrS
 from .weather import PRXmm, PR1day, PR5day
+
+logger = logging.getLogger(__name__)
 
 
 # required ds_dict keys per metric
@@ -166,7 +169,7 @@ def calculate_all(
     # run prepare_inputs automatically if a grid file is provided or regrid=False explicitly set
     if model_grid_file is not None or not regrid:
         from .inputs import prepare_inputs
-        print("running prepare_inputs before calculate_all...")
+        logger.info("running prepare_inputs before calculate_all...")
         ds_dict = prepare_inputs(ds_dict, spatial_chunk=spatial_chunk,
                                  model_grid_file=model_grid_file,
                                  regrid=regrid,
@@ -181,7 +184,7 @@ def calculate_all(
     # by HWF, TNXp, PR1day, PR5day. SPI uses the raw pr directly from base_dict.
     if base_dict is not None:
         if model_grid_file is not None or not regrid:
-            print("running prepare_inputs on base_dict...")
+            logger.info("running prepare_inputs on base_dict...")
             base_dict_prepped = {}
             base_dict = prepare_inputs(base_dict,
                         model_grid_file=model_grid_file,
@@ -196,7 +199,7 @@ def calculate_all(
         needs_pct = not any(k.endswith("p_calday") or k.endswith("p") and "_" in k
                             for k in base_dict.keys())
         if needs_pct:
-            print("base_dict looks like raw data -- computing percentile thresholds automatically...")
+            logger.info("base_dict looks like raw data -- computing percentile thresholds automatically...")
             base_dict_pct = calculate_base_period_percentiles(
                 tas=base_dict.get("tas"),
                 tasmin=base_dict.get("tasmin"),
@@ -212,7 +215,7 @@ def calculate_all(
         has_pr     = "pr" in ds_dict
         has_mrsos = "mrsos" in ds_dict
         if any([has_tas, has_tasmin, has_pr, has_mrsos]):
-            print("base_dict not provided -- computing automatically from ds_dict...")
+            logger.info("base_dict not provided -- computing automatically from ds_dict...")
             base_dict = calculate_base_period_percentiles(
                 tas=ds_dict["tas"]    if has_tas    else None,
                 tasmin=ds_dict["tasmin"] if has_tasmin else None,
@@ -220,7 +223,9 @@ def calculate_all(
                 mrsos=ds_dict["mrsos"] if has_mrsos else None,
             )
         else:
-            print("base_dict not provided and no tas/tasmin/pr in ds_dict -- skipping percentile-based metrics.")
+            logger.warning(
+                "base_dict not provided and no tas/tasmin/pr in ds_dict -- skipping percentile-based metrics."
+            )
 
     results = {}
     skipped = {}   # metric -> reason (missing inputs)
@@ -231,25 +236,25 @@ def calculate_all(
         can_run, reason = _check_vars(ds_dict, base_dict, name)
         if not can_run:
             skipped[name] = reason
-            print(f"  skipping {name} — {reason}")
+            logger.info("skipping %s — %s", name, reason)
             return
-        print(f"  running {name}...")
+        logger.info("running %s...", name)
         try:
             result = fn()
             if result is not None:
                 results[name] = result
             else:
-                skipped[name] = "returned None (likely a threshold mismatch — check printed warnings)"
-                print(f"  skipping {name} — returned None")
+                skipped[name] = "returned None (likely a threshold mismatch — check logged warnings)"
+                logger.info("skipping %s — returned None", name)
         except Exception as e:
             failed[name] = str(e)
-            print(f"  ERROR in {name}: {e}")
-            print(f"    {traceback.format_exc().splitlines()[-2]}")  # one-liner from traceback
+            logger.error("ERROR in %s: %s", name, e)
+            logger.error("%s", traceback.format_exc().splitlines()[-2])
 
-    print("=== calculate_all ===")
+    logger.info("=== calculate_all ===")
 
     # --- heat stress ---
-    print("\n-- heat stress --")
+    logger.info("-- heat stress --")
     _run("AT",      lambda: AT(ds_dict))
     _run("HI",      lambda: HI(ds_dict))
     _run("Hu",      lambda: Hu(ds_dict))
@@ -261,12 +266,12 @@ def calculate_all(
     _run("TR",      lambda: TR(ds_dict, TR_thresh=TR_thresh))
 
     # --- cold ---
-    print("\n-- cold extremes --")
+    logger.info("-- cold extremes --")
     _run("UTCIcold", lambda: UTCIcold(ds_dict))
     _run("TNXp",     lambda: TNXp(ds_dict, base_dict))
 
     # --- fire ---
-    print("\n-- fire --")
+    logger.info("-- fire --")
     _run("FI",  lambda: FI(ds_dict, fire_mask_file=fwi_mask_file))
     _run("HDW", lambda: HDW(ds_dict, fire_mask_file=fwi_mask_file))
     _run("FWI", lambda: FWI(ds_dict,
@@ -274,19 +279,19 @@ def calculate_all(
                             environmental_zone_file=environmental_zone_file))
 
     # --- air quality ---
-    print("\n-- air quality --")
+    logger.info("-- air quality --")
     _run("O3",     lambda: O3(ds_dict, mda8_scale_file=mda8_scale_file,
                                mda8_scale_varname=mda8_scale_varname))
     _run("PM2pt5", lambda: PM2pt5(ds_dict))
 
     # --- drought ---
-    print("\n-- drought --")
+    logger.info("-- drought --")
     _run("CDD",  lambda: CDD(ds_dict))
     _run("SPI",  lambda: SPI(ds_dict, base_dict))
     _run("SMSXp", lambda: SMSXp(ds_dict, base_dict))
 
     # --- disease ---
-    print("\n-- disease --")
+    logger.info("-- disease --")
     _run("VSmalaria",   lambda: VSmalaria(ds_dict, VBD_mask_file=VBD_mask_file))
     _run("VSzika",      lambda: VSzika(ds_dict, VBD_mask_file=VBD_mask_file))
     _run("VSdengueAeg", lambda: VSdengueAeg(ds_dict, VBD_mask_file=VBD_mask_file))
@@ -294,21 +299,21 @@ def calculate_all(
     _run("VbrS",        lambda: VbrS(ds_dict, coast_mask_file=coast_mask_file))
 
     # --- weather ---
-    print("\n-- weather --")
+    logger.info("-- weather --")
     _run("PRXmm", lambda: PRXmm(ds_dict))
     _run("PR1day", lambda: PR1day(ds_dict, base_dict))
     _run("PR5day", lambda: PR5day(ds_dict, base_dict))
 
     # --- summary ---
-    print("\n=== calculate_all complete ===")
-    print(f"  calculated : {len(results)} metrics — {list(results.keys())}")
+    logger.info("=== calculate_all complete ===")
+    logger.info("calculated : %s metrics — %s", len(results), list(results.keys()))
     if skipped:
-        print(f"  skipped    : {len(skipped)} metrics")
+        logger.info("skipped    : %s metrics", len(skipped))
         for name, reason in skipped.items():
-            print(f"    {name}: {reason}")
+            logger.info("  %s: %s", name, reason)
     if failed:
-        print(f"  failed     : {len(failed)} metrics")
+        logger.info("failed     : %s metrics", len(failed))
         for name, reason in failed.items():
-            print(f"    {name}: {reason}")
+            logger.info("  %s: %s", name, reason)
 
     return results

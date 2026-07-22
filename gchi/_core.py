@@ -3,10 +3,46 @@ internal helpers — unit conversion, exceedance counting, level assignment, etc
 not intended to be called directly by users
 """
 
+import logging
+from typing import Literal
+
 import numpy as np
 import xarray as xr
-import xesmf as xe
 
+logger = logging.getLogger(__name__)
+
+# offset for K <-> C conversions
+KELVIN_OFFSET = 273.15
+
+ConvType = Literal[
+    "C", "K", "F", "fraction", "%", "hPa", "Pa",
+    "mm day-1", "m s-1", "km h-1", "psu", "kg kg-1",
+]
+
+# threshold exceedance direction: 'above' (da > th) or 'below' (da < th)
+ExceedanceDir = Literal["above", "below"]
+
+# map normalized unit variants -> canonical unit string
+# non-exhaustive but covers most cmip6 + common variants
+_UNIT_ALIASES = {
+    variant: canonical
+    for canonical, variants in {
+        "C": {"c", "celsius", "centigrade"},
+        "K": {"k", "kelvin"},
+        "F": {"f", "fahrenheit"},
+        "%": {"%", "percent", "pct"},
+        "fraction": {"fraction", "frac"},
+        "Pa": {"pa", "pascal", "pascals"},
+        "hPa": {"hpa", "mb", "millibar", "millibars"},
+        "kg m-2 s-1": {"kgm-2s-1", "kg/m2s", "kgm2s-1", "kgm^-2s^-1"},
+        "mm day-1": {"mmday-1", "mm/day"},
+        "m s-1": {"ms-1", "m/s", "ms^-1"},
+        "km h-1": {"kmh-1", "km/h", "kmh^-1"},
+        "psu": {"psu", "practicalsalinityunits"},
+        "kg kg-1": {"kgkg-1", "kg/kg", "kgkg^-1"},
+    }.items()
+    for variant in variants
+}
 
 def _drop_all_bounds(da):
     """drop X_bounds coordinates (can cause merging issues)"""
@@ -22,55 +58,106 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
         minv = float(sample.min(skipna=True))
         maxv = float(sample.max(skipna=True))
     except Exception as e:
-        print(f"data value spot check failed: {e}\nskipping units spot check. recommended: add units attrs and re-run")
+        logger.warning(
+            "data value spot check failed: %s\nskipping units spot check. recommended: add units attrs and re-run",
+            e,
+        )
         return
 
     if units_attr == "C":
         if not (-100 < minv < 60 and -100 < maxv < 60):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °C.")
+            logger.warning(
+                "values %.1f–%.1f outside reasonable range for temperature in °C.",
+                minv, maxv,
+            )
     elif units_attr == "K":
         if not (150 < minv < 400 and 150 < maxv < 400):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in K.")
+            logger.warning(
+                "values %.1f–%.1f outside reasonable range for temperature in K.",
+                minv, maxv,
+            )
     elif units_attr == "F":
         if not (-150 < minv < 140 and -150 < maxv < 140):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °F.")
+            logger.warning(
+                "values %.1f–%.1f outside reasonable range for temperature in °F.",
+                minv, maxv,
+            )
     elif units_attr == "fraction":
         if not (0 <= minv and maxv <= 1.10):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for relative humidity (fraction). clipped to 0.001-0.999999.")
+            logger.warning(
+                "values %.1f–%.1f outside reasonable range for relative humidity (fraction). clipped to 0.001-0.999999.",
+                minv, maxv,
+            )
     elif units_attr == "%":
         if not (0 <= minv and maxv <= 110):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for relative humidity (%). clipped to 0.1-99.9999.")
+            logger.warning(
+                "values %.1f–%.1f outside reasonable range for relative humidity (%%). clipped to 0.1-99.9999.",
+                minv, maxv,
+            )
     elif units_attr == "hPa":
         if not (100 <= minv <= 1200 and 100 <= maxv <= 1200):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for pressure (hPa).")
+            logger.warning(
+                "values %.1f–%.1f outside reasonable range for pressure (hPa).",
+                minv, maxv,
+            )
     elif units_attr == "mm day-1":
         if maxv > 300:
-            print(f"WARNING: max value {maxv:.3f} unusually large for precipitation (mm/day): check units.")
+            logger.warning(
+                "max value %.3f unusually large for precipitation (mm/day): check units.",
+                maxv,
+            )
         elif minv < 0:
-            print(f"WARNING: min value {minv:.3f} negative for precipitation (mm/day): check units.")
+            logger.warning(
+                "min value %.3f negative for precipitation (mm/day): check units.",
+                minv,
+            )
     elif units_attr == "m s-1":
         if maxv > 100:
-            print(f"WARNING: max value {maxv:.3f} unusually large for wind speed (m s-1): check units.")
+            logger.warning(
+                "max value %.3f unusually large for wind speed (m s-1): check units.",
+                maxv,
+            )
         if minv < 0:
-            print(f"WARNING: min value {minv:.3f} negative for wind speed (m s-1): check it's speed not u/v component.")
+            logger.warning(
+                "min value %.3f negative for wind speed (m s-1): check it's speed not u/v component.",
+                minv,
+            )
     elif units_attr == "km h-1":
         if maxv > 360:
-            print(f"WARNING: max value {maxv:.3f} unusually large for wind speed (km h-1): check units.")
+            logger.warning(
+                "max value %.3f unusually large for wind speed (km h-1): check units.",
+                maxv,
+            )
         if minv < 0:
-            print(f"WARNING: min value {minv:.3f} negative for wind speed (km h-1): check it's speed not u/v component.")
+            logger.warning(
+                "min value %.3f negative for wind speed (km h-1): check it's speed not u/v component.",
+                minv,
+            )
     elif units_attr == "psu":
         if maxv > 43:
-            print(f"WARNING: max value {maxv:.3f} unusually large for sea surface salinity (psu): check units.")
+            logger.warning(
+                "max value %.3f unusually large for sea surface salinity (psu): check units.",
+                maxv,
+            )
         if minv < 5:
-            print(f"WARNING: min value {minv:.3f} unusually small for sea surface salinity (psu).")
+            logger.warning(
+                "min value %.3f unusually small for sea surface salinity (psu).",
+                minv,
+            )
     elif units_attr == "kg kg-1":
         if maxv > 1e-4:
-            print(f"WARNING: max value {maxv:.3f} unusually large for aerosol inputs (kg kg-1): check units.")
+            logger.warning(
+                "max value %.3f unusually large for aerosol inputs (kg kg-1): check units.",
+                maxv,
+            )
         if minv < 0:
-            print(f"WARNING: min value {maxv:.3f} negative for aerosol inputs (kg kg-1): check units.")
+            logger.warning(
+                "min value %.3f negative for aerosol inputs (kg kg-1): check units.",
+                maxv,
+            )
 
 
-def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
+def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: ConvType):
     """
     Check and convert the units of a DataArray.
 
@@ -78,8 +165,8 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
     ----------
     da : xr.DataArray
     input_var : str
-        variable name (for print messages)
-    conv_type : str
+        variable name (for log messages)
+    conv_type : ConvType
         target unit — one of 'C','K','F','fraction','%','hPa','Pa','mm day-1','m s-1','km h-1','psu','kg kg-1'
 
     Returns
@@ -90,60 +177,19 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
 
     # extract and normalize units string
     raw_units = None
+    normalized_units = None
+
     for k in da.attrs:
         if k.lower() in ["unit", "units"]:
             raw_units = da.attrs[k]
             break
 
     if raw_units:
-        u = str(raw_units).lower().replace(" ", "").replace("degrees", "").replace("deg", "").replace("°", "")
-    else:
-        u = None
-
-    # normalized unit categories — non-exhaustive but covers most cmip6 + common variants
-    temp_c = {"c", "celsius", "centigrade"}
-    temp_k = {"k", "kelvin"}
-    temp_f = {"f", "fahrenheit"}
-    percent = {"%", "percent", "pct"}
-    frac = {"fraction", "frac"}
-    pa = {"pa", "pascal", "pascals"}
-    hpa = {"hpa", "mb", "millibar", "millibars"}
-    precip_kg_ms = {"kgm-2s-1", "kg/m2s", "kgm2s-1", "kgm^-2s^-1"}
-    precip_mm_day = {"mmday-1", "mm/day"}
-    wind_m_s = {"ms-1", "m/s", "ms^-1"}
-    wind_km_h = {"kmh-1", "km/h", "kmh^-1"}
-    salinity_psu = {"psu", "practicalsalinityunits"}
-    pm_kg_kg = {"kgkg-1", "kg/kg", "kgkg^-1"}
-
-    if u in temp_c:
-        units_attr = "C"
-    elif u in temp_k:
-        units_attr = "K"
-    elif u in temp_f:
-        units_attr = "F"
-    elif u in percent:
-        units_attr = "%"
-    elif u in frac:
-        units_attr = "fraction"
-    elif u in pa:
-        units_attr = "Pa"
-    elif u in hpa:
-        units_attr = "hPa"
-    elif u in precip_kg_ms:
-        units_attr = "kg m-2 s-1"
-    elif u in precip_mm_day:
-        units_attr = "mm day-1"
-    elif u in wind_m_s:
-        units_attr = "m s-1"
-    elif u in wind_km_h:
-        units_attr = "km h-1"
-    elif u in salinity_psu:
-        units_attr = "psu"
-    elif u in pm_kg_kg:
-        units_attr = "kg kg-1"
-    else:
-        units_attr = None
-
+        normalized_units = str(raw_units).lower().replace(" ", "").replace("degrees", "").replace("deg", "").replace("°", "")
+        
+    units_attr = _UNIT_ALIASES.get(normalized_units)
+    
+    # TODO: Write tests for this
     # if units missing, try to guess from data range
     guessed = False
     if units_attr is None:
@@ -153,7 +199,10 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
             minv = float(sample.min(skipna=True))
             maxv = float(sample.max(skipna=True))
         except Exception as e:
-            print(f"data value spot check failed: {e}\nskipping units spot check. add units attrs and re-run")
+            logger.warning(
+                "data value spot check failed: %s\nskipping units spot check. add units attrs and re-run",
+                e,
+            )
             minv, maxv = np.nan, np.nan
 
         if np.isnan(minv) or np.isnan(maxv):
@@ -179,24 +228,30 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
                 units_attr = "mm day-1"
         elif conv_type in ["m s-1", "km h-1"]:
             if maxv < 100:
-                print(f"no units attribute found for wind speed. assuming m s-1. please check.")
+                logger.warning("no units attribute found for wind speed. assuming m s-1. please check.")
                 units_attr = "m s-1"
             else:
-                print(f"no units attribute found for wind speed. assuming km h-1. please check.")
+                logger.warning("no units attribute found for wind speed. assuming km h-1. please check.")
                 units_attr = "km h-1"
         elif conv_type == "psu":
-            print(f"no units attribute found for sea surface salinity. assuming psu. please check.")
+            logger.warning("no units attribute found for sea surface salinity. assuming psu. please check.")
             units_attr = "psu"
         elif conv_type == "kg kg-1":
-            print(f"no units attribute found for PM inputs. assuming kg kg-1. please check.")
+            logger.warning("no units attribute found for PM inputs. assuming kg kg-1. please check.")
             units_attr = "kg kg-1"
         else:
             units_attr = "unknown"
 
         if units_attr not in [None, "unknown"]:
-            print(f"guessed {input_var} units as '{units_attr}' based on data values. min: {round(minv, 3)} max: {round(maxv, 3)}.")
+            logger.warning(
+                "guessed %s units as '%s' based on data values. min: %s max: %s.",
+                input_var, units_attr, round(minv, 3), round(maxv, 3),
+            )
         else:
-            print(f"could not guess {input_var} units. min: {round(minv, 3)} max: {round(maxv, 3)}.\nplease add a units attribute and re-run.")
+            raise ValueError(
+                f"could not determine {input_var} units. min: {round(minv, 3)} max: {round(maxv, 3)}. "
+                "please add a units attribute and re-run."
+            )
 
     # already correct units — just sanity check and return
     if units_attr == conv_type:
@@ -207,19 +262,19 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
     # do conversions
     if units_attr == "C":
         if conv_type == "K":
-            da_out = da + 273.15
+            da_out = da + KELVIN_OFFSET
         elif conv_type == "F":
             da_out = da * 9 / 5 + 32
     elif units_attr == "K":
         if conv_type == "C":
-            da_out = da - 273.15
+            da_out = da - KELVIN_OFFSET
         elif conv_type == "F":
-            da_out = (da - 273.15) * 9 / 5 + 32
+            da_out = (da - KELVIN_OFFSET) * 9 / 5 + 32
     elif units_attr == "F":
         if conv_type == "C":
             da_out = (da - 32) * 5 / 9
         elif conv_type == "K":
-            da_out = (da - 32) * 5 / 9 + 273.15
+            da_out = (da - 32) * 5 / 9 + KELVIN_OFFSET
 
     if units_attr == "%" and conv_type == "fraction":
         da_out = da / 100
@@ -263,7 +318,7 @@ def _get_tsteps(da):
         steps_per_year.attrs["units"] = "time steps yr-1"
     except Exception:
         steps_per_year = 365
-        print("could not calculate time steps per year. assuming daily data.")
+        logger.warning("could not calculate time steps per year. assuming daily data.")
     return steps_per_year
 
 
@@ -281,7 +336,7 @@ def _apply_nan_mask(da_resampled, nan_mask):
     return da_resampled.where(~nan_mask)
 
 
-def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="above"):
+def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir: ExceedanceDir = "above"):
     """
     Count annual days exceeding each threshold, return as fraction of year.
 
@@ -292,10 +347,7 @@ def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="a
 
     Returns DataArray with dims ('time', 'level', ...) and 'level_values' attr
     """
-    if exceedance_dir.lower() == "below":
-        thresholds = np.sort(severity_thresholds)[::-1]
-    else:
-        thresholds = np.sort(severity_thresholds)
+    thresholds = np.sort(severity_thresholds) if exceedance_dir == "above" else np.sort(severity_thresholds)[::-1]
 
     steps_per_year = _get_tsteps(da)
     # compute before any resampling so land/ocean NaNs are captured
@@ -303,13 +355,10 @@ def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="a
 
     da_list = []
     for th in thresholds:
-        if exceedance_dir.lower() == "above":
+        if exceedance_dir == "above":
             da_count = (da > th).resample(time='1YE').sum(dim='time', skipna=True)
-        elif exceedance_dir.lower() == "below":
+        elif exceedance_dir == "below":
             da_count = (da < th).resample(time='1YE').sum(dim='time', skipna=True)
-        else:
-            print(f"exceedance direction '{exceedance_dir}' not recognized. must be 'above' or 'below'")
-            return None
         da_list.append(da_count)
 
     da_exceed = xr.concat(da_list, dim='level')
@@ -321,7 +370,7 @@ def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="a
     return da_exceed
 
 
-def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir="above"):
+def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir: ExceedanceDir = "above"):
     """
     Conditional annual exceedance for air quality: only counts exceedances in years where
     the annual average itself crosses the threshold. Otherwise count = 0.
@@ -329,11 +378,11 @@ def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir
     da : xr.DataArray with 'time' dimension
     severity_thresholds : list of threshold values
     var_name : output DataArray name
+    exceedance_dir : {'above', 'below'}
+        threshold exceedance direction
     """
-    if exceedance_dir.lower() == "below":
-        thresholds = np.sort(severity_thresholds)[::-1]
-    else:
-        thresholds = np.sort(severity_thresholds)
+
+    thresholds = np.sort(severity_thresholds) if exceedance_dir == "above" else np.sort(severity_thresholds)[::-1]
 
     steps_per_year = _get_tsteps(da)
     # compute before any resampling so land/ocean NaNs are captured
@@ -342,10 +391,10 @@ def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir
 
     da_list = []
     for th in thresholds:
-        if exceedance_dir.lower() == "above":
+        if exceedance_dir == "above":
             da_count = (da > th).resample(time='1YE').sum(dim='time', skipna=True)
             annual_mean_crosses = da_annual_mean > th
-        elif exceedance_dir.lower() == "below":
+        elif exceedance_dir == "below":
             da_count = (da < th).resample(time='1YE').sum(dim='time', skipna=True)
             annual_mean_crosses = da_annual_mean < th
         else:
@@ -497,6 +546,18 @@ def _tetens_sat_vapor_pressure(T_celsius):
 
 def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
     """regrid ds_in to the target grid"""
+    # xesmf (backed by esmpy/ESMF) is an optional dependency — imported lazily so
+    # the rest of gchi works without it. esmpy is not on PyPI; install via conda-forge.
+    try:
+        import xesmf as xe
+    except ImportError as e:
+        raise ImportError(
+            "regridding requires xesmf, which is an optional dependency. "
+            "install it with `pip install gchi[regrid]`, but note its backend (esmpy/ESMF) "
+            "is not available on PyPI and must come from conda-forge: "
+            "`conda install -c conda-forge esmpy` (or see environment.yml)."
+        ) from e
+
     regridder = xe.Regridder(ds_in, regrid_to, method=method, periodic=True, ignore_degenerate=True)
     ds_out = regridder(ds_in)
     if isinstance(ds_out, xr.DataArray):
@@ -638,6 +699,6 @@ def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
             result[var].attrs = {**var_attrs, **gchi_attrs}
 
     except Exception as e:
-        print(f"  WARNING: could not add metadata to {metric_name} output: {e}")
+        logger.warning("could not add metadata to %s output: %s", metric_name, e)
 
     return result

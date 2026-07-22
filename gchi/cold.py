@@ -8,23 +8,23 @@ import xarray as xr
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _assign_severity_level, _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata
 )
-from .heat import _utci_values
+from .heat import _utci_values, HumVar
 from .thresholds import severity_thresholds as _default_thresholds
 
 
-def utci_cold_values(ds_dict, hum_var='both'):
+def utci_cold_values(ds_dict, hum_var: HumVar = "both"):
     """Raw UTCIcold values (°C)."""
-    return _utci_values(ds_dict, hum_var=hum_var, hotorcold='cold')
+    return _utci_values(ds_dict, hum_var=hum_var, temp_extreme="cold")
 
 
-def UTCIcold(ds_dict, hum_var='both', severity_thresholds=None):
+def UTCIcold(ds_dict, hum_var: HumVar = "both", severity_thresholds=None):
     """
     UTCI cold stress exceedance levels (days below threshold).
     Call utci_cold_values() to get raw UTCI without level assignment.
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["UTCIcold"]
-    UTCI = _utci_values(ds_dict, hum_var=hum_var, hotorcold='cold')
+    UTCI = _utci_values(ds_dict, hum_var=hum_var, temp_extreme="cold")
     UTCI_levels = _annual_exceedance_frac(UTCI, severity_thresholds=severity_thresholds, var_name="UTCIcold", exceedance_dir="below")
     result = _assign_severity_level(UTCI_levels)
     return _add_metric_metadata(result, "UTCIcold", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
@@ -60,11 +60,10 @@ def TNXp(ds_dict, base_dict, severity_thresholds=None, temp_max=15):
     )
 
     if sorted(tasmin_base_percentile_vals) != sorted(severity_thresholds):
-        print(
-            f"cannot calculate TNXp — base period tasmin percentiles don't match severity_thresholds.\n"
-            f"base period: {tasmin_base_percentile_vals}. thresholds: {severity_thresholds}. skipping..."
+        raise ValueError(
+            f"cannot calculate TNXp — base period tasmin percentiles don't match severity_thresholds. "
+            f"base period: {tasmin_base_percentile_vals}. thresholds: {severity_thresholds}."
         )
-        return None
 
     n = len(tasmin_base_percentile_keys)
 

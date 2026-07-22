@@ -624,7 +624,7 @@ def lifting_condensation_level(p, T, q, phase='liquid', limit=True):
             T_lcl = alpha / W
 
             # Check if solution has converged
-            if np.max(np.abs(T_lcl - T_lcl_prev)) < precision:
+            if np.max(np.abs(T_lcl - T_lcl_prev)) < precision: # TODO: not defined 
                 converged  = True
             else:
                 count += 1
@@ -884,6 +884,7 @@ def follow_moist_adiabat(
                             phase=phase
                             )
                     else:
+                        # TODO: not defined 
                         dT_dp[ascending] = saturated_adiabatic_lapse_rate(
                             pmid[ascending], Tmid[ascending], qt[ascending],
                             phase=phase
@@ -901,14 +902,14 @@ def follow_moist_adiabat(
                 T2 = T1 + pmid * dT_dp * np.log(p2 / p1)  # pmid * dT/dp = dT/dlnp
 
                 # Check if the solution has converged
-                if np.nanmax(np.abs(T2 - T2_prev)) < precision:
+                if np.nanmax(np.abs(T2 - T2_prev)) < precision: #TODO: not defined
                     converged = True
                 else:
                     count += 1
-                    if count == max_n_iter:
+                    if count == max_n_iter: # TODO: not defined
                         # should converge in just a couple of iterations
                         # provided pinc is not too large
-                        print(f'Not converged after {max_n_iter} iterations')
+                        print(f'Not converged after {max_n_iter} iterations') 
                         break
 
                 if explicit:

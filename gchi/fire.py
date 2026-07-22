@@ -5,6 +5,7 @@ note on chunking:
 - FI and HDW: fast chunked
 - FWI: does NOT work chunked — uses a time-step loop and will load data automatically
 """
+import logging
 
 import numpy as np
 import xarray as xr
@@ -15,6 +16,7 @@ from ._core import (
 )
 from .thresholds import severity_thresholds as _default_thresholds, fwi_thresholds
 
+logger = logging.getLogger(__name__)
 
 def _fmi_values(ds_dict):
     """fuel moisture index (Sharples et al. 2009)"""
@@ -30,15 +32,13 @@ def fi_values(ds_dict, fire_mask_file=None):
     https://doi.org/10.1016/j.envsoft.2008.10.012
     """
 
-    if fire_mask_file is not None:
-        fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
-    else:
-        print("no FWI mask file provided — proceeding without infrequent burning mask")
-        fwi_mask = False  # no masking
-
+    fwi_mask = _load_fire_mask(fire_mask_file)
+    if fwi_mask is None:
+        logger.info("no FWI mask file provided — proceeding without infrequent burning mask")
     U = _check_and_convert_units(da=ds_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1")
     FMI = _fmi_values(ds_dict)
-    return ((U.where(U > 1, 1)) / FMI).where(~fwi_mask)
+    FI = (U.where(U > 1, 1)) / FMI
+    return FI if fwi_mask is None else FI.where(~fwi_mask)
 
 
 def _load_fire_mask(fire_mask_file):
@@ -75,11 +75,9 @@ def hdw_values(ds_dict, fire_mask_file=None):
     Hot-Dry-Windy index values (Srock et al. 2018).
     https://doi.org/10.3390/atmos9070279
     """
-    if fire_mask_file is not None:
-        fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
-    else:
-        print("no FWI mask file provided — proceeding without infrequent burning mask")
-        fwi_mask = False  # no masking
+    fwi_mask = _load_fire_mask(fire_mask_file)
+    if fwi_mask is None:
+        logger.info("no FWI mask file provided — proceeding without infrequent burning mask")
 
     T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="C")
     RH = _check_and_convert_units(da=ds_dict["hurs"], input_var="hurs", conv_type="fraction")
@@ -88,7 +86,8 @@ def hdw_values(ds_dict, fire_mask_file=None):
 
     es = _tetens_sat_vapor_pressure(T)
     VPD = (1 - RH) * es
-    return (U * VPD).where(~fwi_mask)
+    HDW = U * VPD
+    return HDW if fwi_mask is None else HDW.where(~fwi_mask)
 
 
 def HDW(ds_dict, severity_thresholds=None, fire_mask_file=None):
@@ -110,7 +109,14 @@ def HDW(ds_dict, severity_thresholds=None, fire_mask_file=None):
         HDW_val = HDW_val.where(~fire_mask)
     HDW_levels = _annual_exceedance_frac(HDW_val, severity_thresholds=severity_thresholds, var_name="HDW")
     result = _assign_severity_level(HDW_levels)
-    return _add_metric_metadata(result, "HDW", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Srock et al. 2018 hot-dry-windy index. fire_mask_file={fire_mask_file}")
+    return _add_metric_metadata(
+        result, 
+        metric_name="HDW", 
+        ds_dict=ds_dict, 
+        severity_thresholds=severity_thresholds, 
+        units="fraction of year", 
+        notes=f"Srock et al. 2018 hot-dry-windy index. fire_mask_file={fire_mask_file}"
+    )
 
 
 # =================
@@ -251,12 +257,12 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
     fwi_mask_file : str, optional
         path to infrequent burning mask file
     """
-    print("calculating FWI...")
+    logger.info("calculating FWI...")
 
     if fwi_mask_file is not None:
         fwi_mask = xr.open_dataset(fwi_mask_file).mask_infreq_burning
     else:
-        print("no FWI mask file provided — proceeding without infrequent burning mask")
+        logger.info("no FWI mask file provided — proceeding without infrequent burning mask")
         fwi_mask = False
 
     sample = list(ds_dict.values())[0]
@@ -265,7 +271,7 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
     init = init_values if init_values is not None else {'ffmc': 85.0, 'dmc': 6.0, 'dc': 15.0}
 
     for year in years:
-        print(f"processing year {year}...")
+        logger.info(f"processing year {year}...")
         year_dict = {k: v.sel(time=str(year)).load() for k, v in ds_dict.items() if hasattr(v, 'sel')}
 
         TX = _check_and_convert_units(da=year_dict["tasmax"], input_var="tasmax", conv_type="C").where(~fwi_mask)
@@ -273,10 +279,10 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
         wind = _check_and_convert_units(da=year_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1").where(~fwi_mask)
 
         if use_hursmin and 'hursmin' in year_dict:
-            print("using hursmin")
+            logger.debug("using hursmin")
             rh = _check_and_convert_units(da=year_dict['hursmin'], input_var="hursmin", conv_type="%").where(~fwi_mask)
         else:
-            print("using hurs")
+            logger.debug("using hurs")
             rh = _check_and_convert_units(da=year_dict['hurs'], input_var="hurs", conv_type="%").where(~fwi_mask)
         rh = rh.clip(0, 100)
 
@@ -305,7 +311,7 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
         fwi = template.copy()
 
         n_times = len(TX.time)
-        print(f"  {n_times} time steps...")
+        logger.info(f"  {n_times} time steps...")
 
         for i in range(n_times):
             t = TX.isel(time=i)
@@ -359,11 +365,17 @@ def FWI(ds_dict, use_hursmin=True, init_values=None,
                      init_values=init_values, fwi_mask_file=fwi_mask_file)
 
     if environmental_zone_file is None:
-        print("no environmental zone file provided — cannot assign spatially-varying FWI levels. returning raw FWI.")
+        logger.info("no environmental zone file provided — cannot assign spatially-varying FWI levels. returning raw FWI.")
         return fwi
 
     environmental_zones = xr.open_dataset(environmental_zone_file).environmental_zone
 
     FWI_levels = _annual_exceedance_frac_fwi(fwi, environmental_zones, fwi_thresholds)
     result = _assign_severity_level(FWI_levels)
-    return _add_metric_metadata(result, "FWI", ds_dict, units="fraction of year", notes="Canadian FWI. spatially varying thresholds from Kudlackova et al. 2025 environmental zones.")
+    return _add_metric_metadata(
+        result, 
+        metric_name="FWI", 
+        ds_dict=ds_dict, 
+        units="fraction of year", 
+        notes="Canadian FWI. spatially varying thresholds from Kudlackova et al. 2025 environmental zones."
+    )
