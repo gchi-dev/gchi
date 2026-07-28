@@ -4,17 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gchi"
-version = "0.0.0"
+version = "0.1.0.dev2"
+authors = [
+  { name="Maxwell Elling", email="maxwellelling@gmail.com" },
+]
 description = "Global Climate Health Index — climate-based threats to human health"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "numpy",
     "xarray",
     "pandas",
     "scipy",
     "numba",
-    "xesmf"
+    "xesmf",
+    "netcdf4",
+    "h5netcdf",
+    "dask",
 ]
 
 [project.optional-dependencies]
@@ -23,3 +29,9 @@ dev = ["pytest", "black", "ruff"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gchi*"]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
