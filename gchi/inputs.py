@@ -18,6 +18,7 @@ _DEFAULT_PERCENTILES = {
     "pr":          [90, 95, 98, 99.5], # all-year wet-day percentiles
     "tasmin":      [10, 5, 2, 0.5],    # all-year cold-tail percentiles
     "pr5day":      [90, 95, 98, 99.5], # all 5-day rolling sum percentiles (wet windows only)
+    "mrsos":       [90, 95, 98, 99.5], # soil moisture percentiles TODO: Update with correct defaults
 }
 
 
@@ -248,11 +249,13 @@ def calculate_base_period_percentiles(
     tasmax=None,
     tasmin=None,
     pr=None,
+    mrsos=None,
     base_years=_DEFAULT_BASE_YEARS,
     tas_calday_percentiles=_DEFAULT_PERCENTILES["tas_calday"],
     pr_percentiles=_DEFAULT_PERCENTILES["pr"],
     tasmin_percentiles=_DEFAULT_PERCENTILES["tasmin"],
     pr5day_percentiles=_DEFAULT_PERCENTILES["pr5day"],
+    mrsos_percentiles=_DEFAULT_PERCENTILES["mrsos"],
     wet_day_threshold=1.0,
 ):
     """
@@ -272,6 +275,8 @@ def calculate_base_period_percentiles(
         Daily minimum surface temperature. Any units -- converted to degC.
     pr : xr.DataArray, optional
         Daily precipitation. Any units -- converted to mm day-1.
+    mrsos : xr.DataArray, optional
+        Daily surface soil moisture. Any units -- converted to standardised index.
     base_years : tuple of (int, int)
         Start and end years inclusive. Default: (1980, 2014).
     tas_calday_percentiles : list of float
@@ -282,6 +287,8 @@ def calculate_base_period_percentiles(
         All-year cold-tail percentile(s) for tasmin. Default: [10, 5, 2, 0.5].
     pr5day_percentiles : list of float
         Percentile(s) of all 5-day rolling sums (wet windows). Default: [90, 95, 98, 99.5].
+    mrsos_percentiles : list of float
+        All-year percentile(s) for surface soil moisture. Default: [90, 95, 98, 99.5].
     wet_day_threshold : float
         Minimum pr (mm day-1) to count as a wet day. Default: 1.0.
 
