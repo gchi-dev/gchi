@@ -67,17 +67,17 @@ def show_expected_ds_format():
         "tos": "degC",
     }
 
-    logger.info("Expected input dictionary `ds_dict` format:")
-    logger.info("`ds_dict` should have variable keys linked to an xarray DataArray. For example:")
-    logger.info("ds_dict = {'tasmax': tasmax_da, 'pr': pr_da, ...}")
-    logger.info("Key in ds_dict (shortname) : Description / expected units")
+    print("\nExpected input dictionary `ds_dict` format:\n")
+    print("`ds_dict` should have variable keys linked to an xarray DataArray. For example:")
+    print("ds_dict = {'tasmax': tasmax_da, 'pr': pr_da, ...}\n")
+    print("Key in ds_dict (shortname) : Description / expected units\n")
     for desc, shortname in variables.items():
         units = expected_units.get(shortname, "unknown")
-        logger.info("%-12s : %s ; expected units: %s", shortname, desc, units)
-    logger.info("Notes:")
-    logger.info("- Each value should be an xarray.DataArray with a 'time' dimension.")
-    logger.info("- Spatial dimensions (lat/lon) are optional depending on the variable.")
-    logger.info("- It is strongly recommended to include a 'units' attribute.")
+        print(f"{shortname:<12} : {desc} ; expected units: {units}")
+    print("\nNotes:")
+    print("- Each value should be an xarray.DataArray with a 'time' dimension.")
+    print("- Spatial dimensions (lat/lon) are optional depending on the variable.")
+    print("- It is strongly recommended to include a 'units' attribute.")
 
 
 def help():
