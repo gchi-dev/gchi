@@ -14,6 +14,14 @@ def _drop_all_bounds(da):
     return da.drop_vars(drop_bnds)
 
 
+def _is_prepared(ds_dict):
+    """true if every array in ds_dict already went through prepare_inputs()"""
+    return all(
+        getattr(da, "attrs", {}).get("gchi_prepared", False)
+        for da in ds_dict.values() if hasattr(da, "attrs")
+    )
+
+
 def _sanity_check_units(da: xr.DataArray, units_attr: str):
     """check data value range based on units specified"""
     da = _drop_all_bounds(da)

@@ -14,19 +14,45 @@ usage:
         mda8_scale_file="path/to/mda8_scale.nc",
     )
 
-returns a dict of {metric_name: xr.Dataset} for all metrics that ran successfully.
-metrics that were skipped (missing inputs) or failed (error) are noted in the printed summary.
+returns a GCHIResults object -- behaves like a normal dict of {metric_name: xr.Dataset}
+for all metrics that ran successfully, but also remembers which metrics were skipped
+(missing inputs) or failed (error). call results.summary() any time afterwards to
+print/reprint that -- you don't have to catch it off the initial printout.
 """
 
 import traceback
 
-from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR
+from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR, wbt_values
 from .cold import UTCIcold, TNXp
 from .fire import FI, HDW, FWI
 from .aq import O3, PM2pt5
 from .drought import CDD, SPI, SMSXp
 from .disease import VSmalaria, VSzika, VSdengueAeg, VSdengueAlb, VbrS
 from .weather import PRXmm, PR1day, PR5day
+from ._core import _is_prepared
+
+
+class GCHIResults(dict):
+    """
+    dict of {metric_name: xr.Dataset} for metrics that ran successfully, plus
+    a record of what was skipped (missing inputs) or failed (error) so the
+    summary can be reprinted any time, not just right after calculate_all runs.
+    """
+    def __init__(self, results, skipped, failed):
+        super().__init__(results)
+        self.skipped = skipped
+        self.failed = failed
+
+    def summary(self):
+        print(f"calculated : {len(self)} metrics -- {list(self.keys())}")
+        if self.skipped:
+            print(f"skipped    : {len(self.skipped)} metrics")
+            for name, reason in self.skipped.items():
+                print(f"  {name}: {reason}")
+        if self.failed:
+            print(f"failed     : {len(self.failed)} metrics")
+            for name, reason in self.failed.items():
+                print(f"  {name}: {reason}")
 
 
 # required ds_dict keys per metric
@@ -138,7 +164,10 @@ def calculate_all(
     ds_dict : dict
         dict of xr.DataArrays keyed by CMIP6 shortname
     base_dict : dict, optional
-        output from calculate_base_period_percentiles(). needed for HWF, TNXp, SPI, SMSXp, PR1day, PR5day
+        output from calculate_base_period_percentiles(), built from your own
+        historical/base-period data. needed for HWF, TNXp, SPI, SMSXp, PR1day, PR5day.
+        NOT derived from ds_dict automatically -- if omitted, those metrics are
+        skipped rather than guessing a base period from the study period data.
     fwi_mask_file : str, optional
         path to infrequent burning mask file (for FWI)
     environmental_zone_file : str, optional
@@ -158,14 +187,16 @@ def calculate_all(
 
     Returns
     -------
-    dict
-        {metric_name: xr.Dataset} for each metric that ran successfully.
-        skipped and failed metrics are printed to console.
+    GCHIResults
+        dict-like {metric_name: xr.Dataset} for each metric that ran successfully.
+        skipped and failed metrics are printed to console, and are also stored on
+        the returned object as .skipped / .failed -- call .summary() to reprint.
     """
 
-    # run prepare_inputs automatically if a grid file is provided or regrid=False explicitly set
-    if model_grid_file is not None or not regrid:
-        from .inputs import prepare_inputs
+    # run prepare_inputs automatically, unless ds_dict has already been through it
+    # (e.g. user called prepare_inputs themselves beforehand) -- never prep twice
+    from .inputs import prepare_inputs
+    if not _is_prepared(ds_dict):
         print("running prepare_inputs before calculate_all...")
         ds_dict = prepare_inputs(ds_dict, spatial_chunk=spatial_chunk,
                                  model_grid_file=model_grid_file,
@@ -175,14 +206,15 @@ def calculate_all(
                                  mask_land=mask_land,
                                  land_mask_file=land_mask_file,
                                  land_mask_var=land_mask_var)
+    else:
+        print("ds_dict already prepped -- skipping prepare_inputs.")
 
     # if base_dict is provided with raw data (tas/tasmin/pr as DataArrays or Datasets),
     # run calculate_base_period_percentiles on it to get the percentile thresholds needed
     # by HWF, TNXp, PR1day, PR5day. SPI uses the raw pr directly from base_dict.
     if base_dict is not None:
-        if model_grid_file is not None or not regrid:
+        if not _is_prepared(base_dict):
             print("running prepare_inputs on base_dict...")
-            base_dict_prepped = {}
             base_dict = prepare_inputs(base_dict,
                         model_grid_file=model_grid_file,
                         regrid=regrid,
@@ -192,6 +224,8 @@ def calculate_all(
                         land_mask_file=land_mask_file,
                         land_mask_var=land_mask_var
                     )
+        else:
+            print("base_dict already prepped -- skipping prepare_inputs.")
         from .inputs import calculate_base_period_percentiles
         needs_pct = not any(k.endswith("p_calday") or k.endswith("p") and "_" in k
                             for k in base_dict.keys())
@@ -205,22 +239,14 @@ def calculate_all(
             )
             # merge: keep raw data (for SPI) + add computed percentiles
             base_dict = {**base_dict, **base_dict_pct}
-    elif base_dict is None:
-        from .inputs import calculate_base_period_percentiles
-        has_tas    = "tas" in ds_dict
-        has_tasmin = "tasmin" in ds_dict
-        has_pr     = "pr" in ds_dict
-        has_mrsos = "mrsos" in ds_dict
-        if any([has_tas, has_tasmin, has_pr, has_mrsos]):
-            print("base_dict not provided -- computing automatically from ds_dict...")
-            base_dict = calculate_base_period_percentiles(
-                tas=ds_dict["tas"]    if has_tas    else None,
-                tasmin=ds_dict["tasmin"] if has_tasmin else None,
-                pr=ds_dict["pr"]      if has_pr     else None,
-                mrsos=ds_dict["mrsos"] if has_mrsos else None,
-            )
-        else:
-            print("base_dict not provided and no tas/tasmin/pr in ds_dict -- skipping percentile-based metrics.")
+    else:
+        # do NOT derive a base period from ds_dict -- ds_dict is the study period,
+        # and the base period must be a deliberately-chosen, separate historical
+        # dataset. if you don't pass base_dict, HWF/TNXp/SPI/SMSXp/PR1day/PR5day
+        # are simply skipped (see _check_vars / _REQUIRED_BASE above).
+        print("base_dict not provided -- HWF/TNXp/SPI/SMSXp/PR1day/PR5day will be skipped. "
+              "pass a base_dict (built from your own historical data via "
+              "calculate_base_period_percentiles) to include them.")
 
     results = {}
     skipped = {}   # metric -> reason (missing inputs)
@@ -253,8 +279,17 @@ def calculate_all(
     _run("AT",      lambda: AT(ds_dict))
     _run("HI",      lambda: HI(ds_dict))
     _run("Hu",      lambda: Hu(ds_dict))
-    _run("WBT",     lambda: WBT(ds_dict))
-    _run("WBGT",    lambda: WBGT(ds_dict))
+
+    # WBT and WBGT both need the wet-bulb temp (Twb) -- compute it once and
+    # share it between them instead of calculating it twice
+    _twb_cache = {}
+    def _get_twb():
+        if "twb" not in _twb_cache:
+            _twb_cache["twb"] = wbt_values(ds_dict)
+        return _twb_cache["twb"]
+
+    _run("WBT",     lambda: WBT(ds_dict, Twb=_get_twb()))
+    _run("WBGT",    lambda: WBGT(ds_dict, Twb=_get_twb()))
     _run("UTCIhot", lambda: UTCIhot(ds_dict))
     _run("HWF",     lambda: HWF(ds_dict, base_dict, percentile_base=percentile_base))
     _run("TXC",     lambda: TXC(ds_dict))
@@ -300,15 +335,8 @@ def calculate_all(
     _run("PR5day", lambda: PR5day(ds_dict, base_dict))
 
     # --- summary ---
+    results = GCHIResults(results, skipped, failed)
     print("\n=== calculate_all complete ===")
-    print(f"  calculated : {len(results)} metrics — {list(results.keys())}")
-    if skipped:
-        print(f"  skipped    : {len(skipped)} metrics")
-        for name, reason in skipped.items():
-            print(f"    {name}: {reason}")
-    if failed:
-        print(f"  failed     : {len(failed)} metrics")
-        for name, reason in failed.items():
-            print(f"    {name}: {reason}")
+    results.summary()
 
     return results

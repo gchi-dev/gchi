@@ -3,7 +3,7 @@ input preparation and base period percentile calculation
 """
 
 import xarray as xr
-from ._core import _check_and_convert_units, _drop_all_bounds, _regrid_xr, _get_surface
+from ._core import _check_and_convert_units, _drop_all_bounds, _regrid_xr
 
 SOFTWARE_VERSION = "0.0.0"
 
@@ -173,8 +173,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
             if has_vert:
-                print(f"  {key}: extracting surface level before regrid...")
-                da = _get_surface(da, key)
+                print(f"  Multiple vertical levels detected ({key}). Ensure you pass surface level data.")
 
         # regridding
         if target_grid is not None:
@@ -223,8 +222,12 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
 
         # chunk + drop bounds
         chunk_dict = {dim: -1 if dim == "time" else spatial_chunk for dim in da.dims}
-        ds_dict_prepared[key] = _drop_all_bounds(da.chunk(chunk_dict))
+        da = _drop_all_bounds(da.chunk(chunk_dict))
         #print(f"  {key}: chunks {chunk_dict}")
+
+        # mark as prepped so calculate_all / individual metric calls know not to redo this
+        da.attrs["gchi_prepared"] = True
+        ds_dict_prepared[key] = da
 
         has_unit = any(k.lower() in ["unit", "units"] for k in da.attrs)
         if not has_unit:
