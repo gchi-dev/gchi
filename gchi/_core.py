@@ -441,53 +441,6 @@ def _assign_severity_level(da, frac_thresholds=None):
     return xr.merge([da, severity_level], compat="override")
 
 
-def _get_surface(da, var):
-    """
-    Get lowest non-NaN value along vertical coordinate (surface level).
-    Handles both lev and plev, infers direction from NaN pattern or variable type.
-    Fallback for directionality: ozone lowest at surface, aerosols highest at surface.
-    """
-    # chunked arrays can't be indexed below, so compute first
-    try:
-        da = da.compute()
-    except Exception:
-        pass
-
-    if ("lev" not in da.dims) and ("plev" not in da.dims):
-        return da
-
-    vdim = next(d for d in da.dims if d in ["lev", "plev"])
-
-    if vdim == "plev":
-        # sort descending (high pressure = surface first)
-        da = da.sortby(vdim, ascending=False)
-    else:
-        # lev: infer surface direction from NaN pattern or max ozone/aerosol heuristic
-        sample = da.isel({vdim: [0, -1]})
-        firstlev_nan = sample.isel({vdim: 0}).isnull().sum()
-        lastlev_nan = sample.isel({vdim: -1}).isnull().sum()
-
-        if firstlev_nan != lastlev_nan:
-            if firstlev_nan > lastlev_nan:
-                da = da.isel({vdim: slice(None, None, -1)})
-        else:
-            firstlev_max = sample.isel({vdim: 0}).max()
-            lastlev_max = sample.isel({vdim: -1}).max()
-            if var == "o3":
-                if firstlev_max > lastlev_max:
-                    da = da.isel({vdim: slice(None, None, -1)})
-            else:
-                # aerosols: higher concentration at surface
-                if firstlev_max < lastlev_max:
-                    da = da.isel({vdim: slice(None, None, -1)})
-
-    mask = da.notnull()
-    idx = mask.argmax(dim=vdim)
-    valid = mask.any(dim=vdim)
-
-    return da.isel({vdim: idx}).where(valid)
-
-
 def _tetens_sat_vapor_pressure(T_celsius):
     """saturation vapor pressure (kPa) via Tetens equation — used in AT, HI, Hu, HDW"""
     es_positive = 0.611 * np.exp(17.27 * T_celsius / (T_celsius + 237.3))

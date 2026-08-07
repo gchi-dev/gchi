@@ -14,7 +14,7 @@ import xarray as xr
 
 from ._core import (
     _check_and_convert_units, _annual_exceedance_frac, _annual_exceedance_frac_aq,
-    _assign_severity_level, _get_surface, _get_tsteps, _add_metric_metadata,
+    _assign_severity_level, _get_tsteps, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds
 
@@ -39,9 +39,7 @@ def o3_values(ds_dict):
     (prepare_inputs handles this more efficiently before regridding).
     """
     O3 = ds_dict["o3"]
-    # fallback surface extraction -- no-op if already 2D (prepare_inputs ran)
-    if ("plev" in O3.dims) or ("lev" in O3.dims):
-        O3 = _get_surface(O3, "o3")
+
     units_attr = None
     for k in O3.attrs:
         if k.lower() in ["unit", "units"]:
@@ -154,14 +152,6 @@ def pm25_values(ds_dict):
     SO4 = ds_dict["mmrso4"]
     SS = ds_dict["mmrss"]
     DU = ds_dict["mmrdust"]
-
-    # fallback surface extraction -- no-op if already 2D (prepare_inputs ran)
-    if ("plev" in BC.dims) or ("lev" in BC.dims):
-        BC = _get_surface(BC, "mmrbc")
-        OA = _get_surface(OA, "mmroa")
-        SO4 = _get_surface(SO4, "mmrso4")
-        SS = _get_surface(SS, "mmrss")
-        DU = _get_surface(DU, "mmrdust")
 
     # check if already in ug m-3
     attrs_lower = {k.lower(): v for k, v in BC.attrs.items()}
