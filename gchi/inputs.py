@@ -3,7 +3,7 @@ input preparation and base period percentile calculation
 """
 
 import xarray as xr
-from ._core import _check_and_convert_units, _drop_all_bounds, _regrid_xr, _get_surface
+from ._core import _check_and_convert_units, _drop_all_bounds, _regrid_xr
 
 SOFTWARE_VERSION = "0.0.0"
 
@@ -169,12 +169,10 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     for key, da in ds_dict.items():
 
         # surface extraction for column vars -- before regrid so we don't
-        #    regrid the full column. _get_surface is a no-op if no vertical dim.
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
             if has_vert:
-                print(f"  {key}: extracting surface level before regrid...")
-                da = _get_surface(da, key)
+                print(f"  Multiple vertical levels detected ({key}). Ensure you pass surface level data.")
 
         # regridding
         if target_grid is not None:
