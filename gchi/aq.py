@@ -88,7 +88,7 @@ def o3_values(ds_dict):
     return O3
 
 
-def O3(ds_dict, severity_thresholds=None, mda8_scale_file=None, mda8_scale_varname="o3"):
+def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_varname="o3"):
     """
     Surface ozone exceedance levels.
     Converts from CMIP6 mol mol-1 to ug m-3, scales to MDA8, then counts
@@ -108,13 +108,20 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file=None, mda8_scale_varna
         override default thresholds. if None, picked automatically based on
         detected input resolution (O3day for daily input, O3mon for monthly).
     mda8_scale_file : str, optional
-        path to MDA8 scale factor file. if None, raw monthly O3 is returned.
+        path to MDA8 scale factor file. default 'default' downloads and caches
+        gchi's default scale factor file (https://zenodo.org/records/19239161)
+        the first time it's needed. pass None to skip MDA8 scaling and return
+        raw monthly O3.
     mda8_scale_varname : str
         variable name in the scale factor file (default 'o3')
     """
     O3_val = o3_values(ds_dict)
     if O3_val is None:
         return None
+
+    if mda8_scale_file == "default":
+        from ._remote_data import get_default_data_file
+        mda8_scale_file = get_default_data_file("mda8_scale")
 
     # detect resolution before collapsing -- determines which threshold set to use
     is_daily = _detect_daily(O3_val)
