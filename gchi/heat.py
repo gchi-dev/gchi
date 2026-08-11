@@ -26,9 +26,19 @@ def _wbt_values(ds_dict):
     p = _check_and_convert_units(da=ds_dict["ps"], input_var="ps", conv_type="Pa")
     TX = _check_and_convert_units(da=ds_dict["tasmax"], input_var="tasmax", conv_type="K")
 
-    if "huss" in ds_dict:
+    # only use huss if it's actually the same time resolution as tasmax -- huss
+    # is sometimes loaded at monthly resolution (e.g. for O3/PM2.5) even when
+    # tasmax/ps/hurs are daily, which would otherwise silently break the
+    # broadcast below. fall back to deriving q from hurs in that case.
+    use_huss = "huss" in ds_dict
+    if use_huss:
         q = _check_and_convert_units(da=ds_dict['huss'], input_var="huss", conv_type="fraction")
-    else:
+        if q.sizes.get("time") != TX.sizes.get("time"):
+            print(f"  WBT: huss time resolution ({q.sizes.get('time')} steps) doesn't match "
+                  f"tasmax ({TX.sizes.get('time')} steps) -- falling back to hurs instead.")
+            use_huss = False
+
+    if not use_huss:
         # derive q from RH using newt's saturation_specific_humidity
         RH = _check_and_convert_units(da=ds_dict['hurs'], input_var="hurs", conv_type="fraction")
         RH = RH.clip(0.001, 0.999999)

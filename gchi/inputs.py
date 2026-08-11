@@ -221,8 +221,12 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
 
         # chunk + drop bounds
         chunk_dict = {dim: -1 if dim == "time" else spatial_chunk for dim in da.dims}
-        ds_dict_prepared[key] = _drop_all_bounds(da.chunk(chunk_dict))
+        da = _drop_all_bounds(da.chunk(chunk_dict))
         #print(f"  {key}: chunks {chunk_dict}")
+
+        # mark as prepped so calculate_all / individual metric calls know not to redo this
+        da.attrs["gchi_prepared"] = True
+        ds_dict_prepared[key] = da
 
         has_unit = any(k.lower() in ["unit", "units"] for k in da.attrs)
         if not has_unit:

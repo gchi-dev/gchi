@@ -71,7 +71,72 @@ from .weather import (
     pr_values,
 )
 
-from .calculate_all import calculate_all
+from .calculate_all import calculate_all, GCHIResults
+
+from ._core import _is_prepared
+
+# ---------------------------------------------------------------------------
+# auto-prep on direct metric calls
+#
+# if a user calls e.g. gchi.FI(ds_dict) straight on raw data, run
+# prepare_inputs() first with default settings, so they don't have to
+# remember to call it themselves. if the data already went through
+# prepare_inputs (checked via the gchi_prepared attr set there), this is
+# skipped -- so it never preps twice.
+#
+# note: this only wraps the top-level gchi.<metric>() calls exported below.
+# calculate_all() preps ds_dict once itself and then calls the underlying
+# metric functions directly (imported from their own modules), so it never
+# goes through this path and never re-preps per metric.
+# ---------------------------------------------------------------------------
+
+def _auto_prep_wrapper(fn):
+    def wrapped(ds_dict, *args, **kwargs):
+        if not _is_prepared(ds_dict):
+            print(f"  {fn.__name__}: input not prepped -- running prepare_inputs() with default settings...")
+            ds_dict = prepare_inputs(ds_dict)
+        return fn(ds_dict, *args, **kwargs)
+    return wrapped
+
+_auto_prep_metrics = [
+    "AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "HWF", "TXC", "TR",
+    "UTCIcold", "TNXp",
+    "FI", "HDW", "FWI",
+    "O3", "PM2pt5",
+    "CDD", "SPI", "SMSXp",
+    "VSmalaria", "VSzika", "VSdengueAeg", "VSdengueAlb", "VbrS",
+    "PRXmm", "PR1day", "PR5day",
+]
+
+for _name in _auto_prep_metrics:
+    globals()[_name] = _auto_prep_wrapper(globals()[_name])
+del _name
+
+# ---------------------------------------------------------------------------
+# auto-prep for the base period too
+#
+# calculate_base_period_percentiles() is the equivalent entry point for your
+# historical/base dataset -- it takes raw arrays (tas=, tasmin=, pr=, mrsos=)
+# and turns them into the percentile dict that HWF/TNXp/SPI/SMSXp/PR1day/PR5day
+# need. those functions only ever see base_dict *after* percentiles are already
+# computed, so prepping has to happen here, before that, not at the metric call.
+#
+# same rule as above: only preps arrays that aren't already prepped, so calling
+# this twice, or calling it after you've prepped things yourself, does nothing
+# extra.
+# ---------------------------------------------------------------------------
+
+def _auto_prep_wrapper_base(fn):
+    def wrapped(*args, **kwargs):
+        raw_vars = {k: v for k, v in kwargs.items() if hasattr(v, "attrs")}
+        if raw_vars and not _is_prepared(raw_vars):
+            print(f"  {fn.__name__}: base period inputs not prepped -- running prepare_inputs() with default settings...")
+            prepped = prepare_inputs(raw_vars)
+            kwargs.update(prepped)
+        return fn(*args, **kwargs)
+    return wrapped
+
+calculate_base_period_percentiles = _auto_prep_wrapper_base(calculate_base_period_percentiles)
 
 __version__ = "0.0.0"
 
@@ -120,4 +185,5 @@ __all__ = [
     "pr_values",
     # all
     "calculate_all",
+    "GCHIResults",
 ]

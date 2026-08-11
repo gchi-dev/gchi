@@ -84,7 +84,7 @@ def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, severity_thre
 
 def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_thresholds=None):
     """
-    Vibrio bacteria suitability (coastal areas).
+    Vibrio bacteria suitability 
     Suitability = monthly SST >= SST_min and SSS < salinity_max.
     From Trinanes et al. 2021.
 
@@ -100,20 +100,12 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_th
         upper salinity threshold for vibrio suitability (default 28 psu)
     SST_min : float
         lower SST threshold for vibrio suitability (default 18°C)
-    coast_mask_file : str, optional
-        path to coastal mask file — if None, no masking is applied
     """
     print("calculating vibrio suitability...")
 
     SST = _check_and_convert_units(da=ds_dict["tos"], input_var="tos", conv_type="C")
     SSS = _check_and_convert_units(da=ds_dict["sos"], input_var="sos", conv_type="psu")
 
-    if coast_mask_file is not None:
-        coast_mask = xr.open_dataset(coast_mask_file).coastal_mask
-        SST = SST.where(coast_mask)
-        SSS = SSS.where(coast_mask)
-    else:
-        print("no coastal mask provided — vibrio suitability will not be masked to coastal cells")
 
     SST = SST.resample(time="1ME").mean()
     SSS = SSS.resample(time="1ME").mean()
