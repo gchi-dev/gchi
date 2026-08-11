@@ -148,7 +148,6 @@ def calculate_all(
     regrid=True,
     regrid_method="bilinear",
     spatial_chunk="auto",
-    coastal_mask_file_prep=None,  # coastal mask for prepare_inputs (tos/sos masking)
     mask_land=True,
     land_mask_file=None,
     land_mask_var="land_mask",
@@ -174,8 +173,6 @@ def calculate_all(
         path to environmental zone file (for FWI spatially-varying thresholds)
     VBD_mask_file : str, optional
         path to aridity mask file (for VSmalaria, VSzika, VSdengue*)
-    coast_mask_file : str, optional
-        path to coastal mask file (for VbrS)
     mda8_scale_file : str, optional
         path to MDA8 scale factor file (for O3)
     mda8_scale_varname : str
@@ -202,7 +199,6 @@ def calculate_all(
                                  model_grid_file=model_grid_file,
                                  regrid=regrid,
                                  regrid_method=regrid_method,
-                                 coastal_mask_file=coastal_mask_file_prep,
                                  mask_land=mask_land,
                                  land_mask_file=land_mask_file,
                                  land_mask_var=land_mask_var)
@@ -219,7 +215,6 @@ def calculate_all(
                         model_grid_file=model_grid_file,
                         regrid=regrid,
                         regrid_method=regrid_method,
-                        coastal_mask_file=coastal_mask_file_prep,
                         mask_land=mask_land,
                         land_mask_file=land_mask_file,
                         land_mask_var=land_mask_var
