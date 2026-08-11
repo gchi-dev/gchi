@@ -19,6 +19,10 @@ def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, severity_thresho
     ds_dict needs 'tas'.
     mask file should contain an aridity_mask variable (True = suitable vegetation).
     """
+    if VBD_mask_file == "default":
+        from ._remote_data import get_default_data_file
+        VBD_mask_file = get_default_data_file("vbd_mask")
+
     if VBD_mask_file is not None:
         VBD_mask = xr.open_dataset(VBD_mask_file).aridity_mask
     else:
@@ -37,7 +41,7 @@ def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, severity_thresho
     return _assign_severity_level(VS_levels, frac_thresholds=severity_thresholds)
 
 
-def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file=None, severity_thresholds=None):
+def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file="default", severity_thresholds=None):
     """
     Malaria transmission suitability — fraction of year with suitable temperature.
     Temperature range from literature.
@@ -49,7 +53,7 @@ def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file=None, severity_thresh
     return _add_metric_metadata(result, "VSmalaria", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Anopheles suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file=None, severity_thresholds=None):
+def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file="default", severity_thresholds=None):
     """
     Zika transmission suitability — fraction of year with suitable temperature.
     """
@@ -60,7 +64,7 @@ def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file=None, severity_thresholds=
     return _add_metric_metadata(result, "VSzika", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes aegypti zika suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, severity_thresholds=None):
+def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file="default", severity_thresholds=None):
     """
     Dengue (Aedes aegypti) transmission suitability.
     """
@@ -71,7 +75,7 @@ def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file=None, severity_thresh
     return _add_metric_metadata(result, "VSdengueAeg", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes aegypti dengue suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file=None, severity_thresholds=None):
+def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file="default", severity_thresholds=None):
     """
     Dengue (Aedes albopictus) transmission suitability.
     """
@@ -86,7 +90,6 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_th
     """
     Vibrio bacteria suitability 
     Suitability = monthly SST >= SST_min and SSS < salinity_max.
-    From Trinanes et al. 2021.
 
     Salinity < 28 psu is used as a coastal proxy since model grid cells are
     too coarse for a distance-to-coast mask. A proper coastal mask can be
@@ -105,7 +108,6 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_th
 
     SST = _check_and_convert_units(da=ds_dict["tos"], input_var="tos", conv_type="C")
     SSS = _check_and_convert_units(da=ds_dict["sos"], input_var="sos", conv_type="psu")
-
 
     SST = SST.resample(time="1ME").mean()
     SSS = SSS.resample(time="1ME").mean()
