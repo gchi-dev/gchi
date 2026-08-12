@@ -14,6 +14,7 @@ from ._core import (
     _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds
+from ._log import logger
 
 def _extract_da(val, var_name):
     """
@@ -156,7 +157,7 @@ def SMSXp(ds_dict, base_dict, severity_thresholds=None):
     )
 
     if sorted(mrsos_base_percentile_vals) != sorted(severity_thresholds):
-        print(
+        logger.warning(
             f"cannot calculate SMSXp — base period mrsos percentiles don't match severity_thresholds.\n"
             f"base period: {mrsos_base_percentile_vals}. thresholds: {severity_thresholds}. skipping..."
         )

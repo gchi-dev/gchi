@@ -14,6 +14,7 @@ from ._core import (
     _get_tsteps, _ann_frac, _nan_mask, _add_metric_metadata
 )
 from .thresholds import severity_thresholds as _default_thresholds
+from ._log import logger
 
 
 def pr_values(ds_dict):
@@ -67,7 +68,7 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
     )
 
     if not pr_base_percentile_keys:
-        print("cannot calculate PR1day -- no pr percentile keys found in base_dict. skipping...")
+        logger.warning("cannot calculate PR1day -- no pr percentile keys found in base_dict. skipping...")
         return None
 
     pr_base_percentile_vals = [
@@ -77,7 +78,7 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
 
     # validate that user thresholds match what was computed in base_dict
     if sorted(percentile_thresholds) != sorted(pr_base_percentile_vals):
-        print(
+        logger.warning(
             f"cannot calculate PR1day -- percentile_thresholds {sorted(percentile_thresholds)} "
             f"don't match base_dict percentiles {sorted(pr_base_percentile_vals)}. "
             f"rerun calculate_base_period_percentiles() with matching percentiles, or "
@@ -176,7 +177,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     )
 
     if not pr5day_base_percentile_keys:
-        print("cannot calculate PR5day -- no pr5day percentile keys found in base_dict. skipping...")
+        logger.warning("cannot calculate PR5day -- no pr5day percentile keys found in base_dict. skipping...")
         return None
 
     pr5day_base_percentile_vals = [
@@ -185,7 +186,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     ]
 
     if sorted(percentile_thresholds) != sorted(pr5day_base_percentile_vals):
-        print(
+        logger.warning(
             f"cannot calculate PR5day -- percentile_thresholds {sorted(percentile_thresholds)} "
             f"don't match base_dict percentiles {sorted(pr5day_base_percentile_vals)}. "
             f"rerun calculate_base_period_percentiles() with matching percentiles, or "

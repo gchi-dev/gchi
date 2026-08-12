@@ -21,6 +21,7 @@ is left at its "default"
 import os
 import hashlib
 import urllib.request
+from ._log import logger
 
 _ZENODO_BASE_URL = "https://zenodo.org/records/19239161/files"
 
@@ -72,12 +73,12 @@ def get_default_data_file(name, base_url=None):
     if os.path.exists(local_path):
         if checksum is None or _md5(local_path) == checksum:
             return local_path
-        print(f"  {filename}: cached file failed checksum verification - re-downloading...")
+        logger.warning(f"{filename}: cached file failed checksum verification - re-downloading...")
 
     url = f"{base_url or _ZENODO_BASE_URL}/{filename}?download=1"
-    print(f"  downloading default {name} file (first time only)...")
-    print(f"    {url}")
-    print(f"    -> {local_path}")
+    logger.info(f"downloading default {name} file (first time only)...")
+    logger.info(f"    {url}")
+    logger.info(f"    -> {local_path}")
 
     tmp_path = local_path + ".part"
     try:
@@ -101,4 +102,4 @@ def clear_data_cache():
         path = os.path.join(cache_dir, filename)
         if os.path.exists(path):
             os.remove(path)
-            print(f"  removed {path}")
+            logger.info(f"removed {path}")

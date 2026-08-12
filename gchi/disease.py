@@ -9,6 +9,7 @@ import xarray as xr
 
 from ._core import _check_and_convert_units, _ann_frac, _assign_severity_level, _get_tsteps, _nan_mask, _add_metric_metadata
 from .thresholds import severity_thresholds as _default_thresholds
+from ._log import logger
 
 
 def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, severity_thresholds):
@@ -26,7 +27,7 @@ def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, severity_thresho
     if VBD_mask_file is not None:
         VBD_mask = xr.open_dataset(VBD_mask_file).aridity_mask
     else:
-        print(f"no VBD mask file provided for {var_name} — proceeding without aridity mask")
+        logger.warning(f"no VBD mask file provided for {var_name} — proceeding without aridity mask")
         VBD_mask = True
 
     T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="C")
@@ -46,7 +47,7 @@ def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file="default", severity_t
     Malaria transmission suitability — fraction of year with suitable temperature.
     Temperature range from literature.
     """
-    print("calculating malaria suitability...")
+    logger.info("calculating malaria suitability...")
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["VSmalaria"]
     result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSmalaria", severity_thresholds)
@@ -57,7 +58,7 @@ def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file="default", severity_thresh
     """
     Zika transmission suitability — fraction of year with suitable temperature.
     """
-    print("calculating zika suitability...")
+    logger.info("calculating zika suitability...")
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["VSzika"]
     result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSzika", severity_thresholds)
@@ -68,7 +69,7 @@ def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file="default", severity_t
     """
     Dengue (Aedes aegypti) transmission suitability.
     """
-    print("calculating dengue aegypti suitability...")
+    logger.info("calculating dengue aegypti suitability...")
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["VSdengueAeg"]
     result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSdengueAeg", severity_thresholds)
@@ -79,14 +80,14 @@ def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file="default", severity
     """
     Dengue (Aedes albopictus) transmission suitability.
     """
-    print("calculating dengue albopictus suitability...")
+    logger.info("calculating dengue albopictus suitability...")
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["VSdengueAlb"]
     result = _vbd_suitability(ds_dict, T_range, VBD_mask_file, "VSdengueAlb", severity_thresholds)
     return _add_metric_metadata(result, "VSdengueAlb", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Aedes albopictus dengue suitability. T_range={T_range}. VBD_mask_file={VBD_mask_file}.")
 
 
-def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_thresholds=None):
+def VbrS(ds_dict, salinity_max=28, SST_min=18, severity_thresholds=None):
     """
     Vibrio bacteria suitability 
     Suitability = monthly SST >= SST_min and SSS < salinity_max.
@@ -104,7 +105,7 @@ def VbrS(ds_dict, salinity_max=28, SST_min=18, coast_mask_file=None, severity_th
     SST_min : float
         lower SST threshold for vibrio suitability (default 18°C)
     """
-    print("calculating vibrio suitability...")
+    logger.info("calculating vibrio suitability...")
 
     SST = _check_and_convert_units(da=ds_dict["tos"], input_var="tos", conv_type="C")
     SSS = _check_and_convert_units(da=ds_dict["sos"], input_var="sos", conv_type="psu")
