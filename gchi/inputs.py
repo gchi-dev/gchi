@@ -39,6 +39,7 @@ def show_expected_ds_format():
         "mass_fraction_of_particulate_organic_matter_dry_aerosol_particles_in_air": "mmroa",
         "mass_fraction_of_sulfate_dry_aerosol_particles_in_air": "mmrso4",
         "mass_fraction_of_sea_salt_dry_aerosol_particles_in_air": "mmrss",
+        "mass_content_of_water_in_soil_layer": "mrsos",
         "mole_fraction_of_ozone_in_air": "o3",
         "sea_surface_salinity": "sos",
         "sea_surface_temperature": "tos",
