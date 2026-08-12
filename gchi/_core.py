@@ -70,7 +70,7 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
     elif units_attr == "psu":
         if maxv > 50:
             logger.warning(f"max value {maxv:.3f} unusually large for sea surface salinity (psu): check units.")
-        if minv < 5:
+        if minv < 1:
             logger.warning(f"min value {minv:.3f} unusually small for sea surface salinity (psu).")
     elif units_attr == "kg kg-1":
         if maxv > 1e-4:
