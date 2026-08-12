@@ -48,7 +48,7 @@ def _load_fire_mask(fire_mask_file):
     return None
 
 
-def FI(ds_dict, severity_thresholds=None, fire_mask_file=None):
+def FI(ds_dict, severity_thresholds=None, fire_mask_file="default"):
     """
     Fire danger index exceedance levels.
     Call fi_values() to get raw FI without level assignment.
@@ -57,10 +57,15 @@ def FI(ds_dict, severity_thresholds=None, fire_mask_file=None):
     ----------
     fire_mask_file : str, optional
         path to infrequent burning mask file. cells where burning is infrequent
-        are masked out before exceedance counting.
+        are masked out before exceedance counting. default 'default' downloads
+        and caches gchi's default mask (https://zenodo.org/records/19239161)
+        the first time it's needed. pass None to skip masking entirely.
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["FI"]
+    if fire_mask_file == "default":
+        from ._remote_data import get_default_data_file
+        fire_mask_file = get_default_data_file("fire_mask")
     FI_val = fi_values(ds_dict, fire_mask_file=fire_mask_file)
     fire_mask = _load_fire_mask(fire_mask_file)
     if fire_mask is not None:
@@ -91,7 +96,7 @@ def hdw_values(ds_dict, fire_mask_file=None):
     return (U * VPD).where(~fwi_mask)
 
 
-def HDW(ds_dict, severity_thresholds=None, fire_mask_file=None):
+def HDW(ds_dict, severity_thresholds=None, fire_mask_file="default"):
     """
     HDW exceedance levels.
     Call hdw_values() to get raw HDW without level assignment.
@@ -100,10 +105,15 @@ def HDW(ds_dict, severity_thresholds=None, fire_mask_file=None):
     ----------
     fire_mask_file : str, optional
         path to infrequent burning mask file. cells where burning is infrequent
-        are masked out before exceedance counting.
+        are masked out before exceedance counting. default 'default' downloads
+        and caches gchi's default mask (https://zenodo.org/records/19239161)
+        the first time it's needed. pass None to skip masking entirely.
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["HDW"]
+    if fire_mask_file == "default":
+        from ._remote_data import get_default_data_file
+        fire_mask_file = get_default_data_file("fire_mask")
     HDW_val = hdw_values(ds_dict, fire_mask_file=fire_mask_file)
     fire_mask = _load_fire_mask(fire_mask_file)
     if fire_mask is not None:
@@ -338,7 +348,7 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
 
 
 def FWI(ds_dict, use_hursmin=True, init_values=None,
-        fwi_mask_file=None, environmental_zone_file=None):
+        fwi_mask_file="default", environmental_zone_file="default"):
     """
     Canadian Fire Weather Index exceedance levels with spatially-varying thresholds.
 
@@ -351,10 +361,22 @@ def FWI(ds_dict, use_hursmin=True, init_values=None,
     use_hursmin : bool
     init_values : dict, optional
     fwi_mask_file : str, optional
-        path to infrequent burning mask
+        path to infrequent burning mask. default 'default' downloads and
+        caches gchi's default mask (https://zenodo.org/records/19239161) the
+        first time it's needed. pass None to skip masking entirely.
     environmental_zone_file : str, optional
-        path to environmental zone file (required for spatially-varying thresholds)
+        path to environmental zone file (required for spatially-varying
+        thresholds). default 'default' downloads and caches gchi's default
+        GEnS zone file (https://zenodo.org/records/19239161) the first time
+        it's needed. pass None to return raw FWI without level assignment.
     """
+    if fwi_mask_file == "default":
+        from ._remote_data import get_default_data_file
+        fwi_mask_file = get_default_data_file("fire_mask")
+    if environmental_zone_file == "default":
+        from ._remote_data import get_default_data_file
+        environmental_zone_file = get_default_data_file("environmental_zone")
+
     fwi = fwi_values(ds_dict, use_hursmin=use_hursmin,
                      init_values=init_values, fwi_mask_file=fwi_mask_file)
 

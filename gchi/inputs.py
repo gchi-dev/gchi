@@ -106,9 +106,8 @@ _ANTARCTIC_LAT = -60
 
 
 def prepare_inputs(ds_dict, spatial_chunk="auto",
-                   model_grid_file=None, regrid=True, regrid_method="bilinear",
-                   coastal_mask_file=None, coastal_mask_var="coastal_mask",
-                   mask_land=True, land_mask_file=None, land_mask_var="land_mask"):
+                   model_grid_file="default", regrid=True, regrid_method="bilinear",
+                   mask_land=True, land_mask_file="default", land_mask_var="land_mask"):
     """
     Chunk all DataArrays in ds_dict for efficient computation.
     Time is kept as one contiguous chunk (required for quantile/groupby ops).
@@ -121,7 +120,6 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
       - regrid to target grid (skipped if grids match or regrid=False)
       - land mask (skipped for ocean vars tos/sos, or if mask_land=False)
       - drop antarctica (lat < -60)
-      - coastal mask (tos/sos only)
       - chunk + drop bounds
 
     if a user skips prepare_inputs, surface extraction still happens as a
@@ -134,21 +132,24 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     spatial_chunk : int or 'auto'
         chunk size for spatial dimensions
     model_grid_file : str, optional
-        path to target grid file for regridding. if None, regridding is skipped.
+        path to target grid file for regridding. default 'default' downloads
+        and caches gchi's default 1x1 global target grid (from
+        https://zenodo.org/records/19239161) the first time it's needed.
+        pass None to skip regridding entirely regardless of `regrid`, or
+        pass your own path to use a custom grid.
     regrid : bool
         set to False to skip regridding entirely. default True.
     regrid_method : str
         regridding method passed to xesmf (default 'bilinear')
-    coastal_mask_file : str, optional
-        path to coastal mask file (used for tos/sos only)
-    coastal_mask_var : str
-        variable name in the coastal mask dataset (default 'coastal_mask')
     mask_land : bool
         apply a land mask to non-ocean variables. default True.
         set to False to skip land masking entirely.
     land_mask_file : str, optional
         path to land mask file. the mask should be True over land (will be set to NaN).
-        if None and mask_land=True, masking is skipped with a warning.
+        default 'default' downloads and caches gchi's default land mask
+        (from https://zenodo.org/records/19239161) the first time it's needed.
+        pass None to skip land masking regardless of `mask_land`, or pass
+        your own path to use a custom mask.
     land_mask_var : str
         variable name in the land mask dataset (default 'land_mask')
 
@@ -160,6 +161,15 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     xr.set_options(keep_attrs=True)
     print("preparing inputs for efficient computation...")
 
+    # resolve "default" sentinels to cached (downloading if needed) local paths.
+    # explicit None still means "skip this step", same as before.
+    if regrid and model_grid_file == "default":
+        from ._remote_data import get_default_data_file
+        model_grid_file = get_default_data_file("model_grid")
+    if mask_land and land_mask_file == "default":
+        from ._remote_data import get_default_data_file
+        land_mask_file = get_default_data_file("land_mask")
+
     # load target grid once up front if needed
     target_grid = None
     if model_grid_file is not None and regrid:
@@ -169,10 +179,12 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     for key, da in ds_dict.items():
 
         # surface extraction for column vars -- before regrid so we don't
+        #    regrid the full column. _get_surface is a no-op if no vertical dim.
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
             if has_vert:
-                print(f"  Multiple vertical levels detected ({key}). Ensure you pass surface level data.")
+                print(f"  {key}: extracting surface level before regrid...")
+                da = _get_surface(da, key)
 
         # regridding
         if target_grid is not None:
@@ -210,14 +222,6 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         # drop antarctica
         if "lat" in da.coords:
             da = da.where(da.lat > _ANTARCTIC_LAT)
-
-        # coastal mask (ocean vars only)
-        if key in _OCEAN_VARS:
-            if coastal_mask_file is not None:
-                coastal_mask = xr.open_dataset(coastal_mask_file)
-                da = da.where(coastal_mask[coastal_mask_var])
-            else:
-                print(f"  coastal mask file not provided -- tos/sos will not be masked to coastal cells")
 
         # chunk + drop bounds
         chunk_dict = {dim: -1 if dim == "time" else spatial_chunk for dim in da.dims}

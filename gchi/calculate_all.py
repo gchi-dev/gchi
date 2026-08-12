@@ -135,21 +135,24 @@ def _check_vars(ds_dict, base_dict, metric):
 def calculate_all(
     ds_dict,
     base_dict=None,
-    # file paths for metrics that need external files
-    fwi_mask_file=None,
-    environmental_zone_file=None,
-    VBD_mask_file=None,
-    coast_mask_file=None,
-    mda8_scale_file=None,
+    # file paths for metrics that need external files -- default 'default' downloads
+    # and caches gchi's reference files (https://zenodo.org/records/19239161) the
+    # first time each is needed. pass None to skip masking/scaling for that metric,
+    # or your own path to use a custom file.
+    fwi_mask_file="default",
+    environmental_zone_file="default",
+    VBD_mask_file="default",
+    coast_mask_file=None,  # no cloud default available for this one
+    mda8_scale_file="default",
     mda8_scale_varname="o3",
     # optional: run prepare_inputs automatically before calculating
-    # leave model_grid_file=None if you already ran prepare_inputs yourself
-    model_grid_file=None,
+    # leave model_grid_file=None if you don't want any regridding to happen
+    model_grid_file="default",
     regrid=True,
     regrid_method="bilinear",
     spatial_chunk="auto",
     mask_land=True,
-    land_mask_file=None,
+    land_mask_file="default",
     land_mask_var="land_mask",
     # optional overrides
     TR_thresh=20,
@@ -173,6 +176,8 @@ def calculate_all(
         path to environmental zone file (for FWI spatially-varying thresholds)
     VBD_mask_file : str, optional
         path to aridity mask file (for VSmalaria, VSzika, VSdengue*)
+    coast_mask_file : str, optional
+        path to coastal mask file (for VbrS)
     mda8_scale_file : str, optional
         path to MDA8 scale factor file (for O3)
     mda8_scale_varname : str
