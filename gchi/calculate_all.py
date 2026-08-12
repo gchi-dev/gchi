@@ -10,7 +10,6 @@ usage:
         fwi_mask_file="path/to/fwi_mask.nc",
         environmental_zone_file="path/to/env_zones.nc",
         VBD_mask_file="path/to/vbd_mask.nc",
-        coast_mask_file="path/to/coast_mask.nc",
         mda8_scale_file="path/to/mda8_scale.nc",
     )
 
@@ -30,6 +29,7 @@ from .drought import CDD, SPI, SMSXp
 from .disease import VSmalaria, VSzika, VSdengueAeg, VSdengueAlb, VbrS
 from .weather import PRXmm, PR1day, PR5day
 from ._core import _is_prepared
+from ._log import logger, set_verbose
 
 
 class GCHIResults(dict):
@@ -142,7 +142,6 @@ def calculate_all(
     fwi_mask_file="default",
     environmental_zone_file="default",
     VBD_mask_file="default",
-    coast_mask_file=None,  # no cloud default available for this one
     mda8_scale_file="default",
     mda8_scale_varname="o3",
     # optional: run prepare_inputs automatically before calculating
@@ -157,6 +156,7 @@ def calculate_all(
     # optional overrides
     TR_thresh=20,
     percentile_base=90,
+    verbose=False,
 ):
     """
     Run all gchi metrics on ds_dict, skipping those with missing inputs.
@@ -176,8 +176,6 @@ def calculate_all(
         path to environmental zone file (for FWI spatially-varying thresholds)
     VBD_mask_file : str, optional
         path to aridity mask file (for VSmalaria, VSzika, VSdengue*)
-    coast_mask_file : str, optional
-        path to coastal mask file (for VbrS)
     mda8_scale_file : str, optional
         path to MDA8 scale factor file (for O3)
     mda8_scale_varname : str
@@ -195,11 +193,13 @@ def calculate_all(
         the returned object as .skipped / .failed -- call .summary() to reprint.
     """
 
+    set_verbose(verbose)
+
     # run prepare_inputs automatically, unless ds_dict has already been through it
     # (e.g. user called prepare_inputs themselves beforehand) -- never prep twice
     from .inputs import prepare_inputs
     if not _is_prepared(ds_dict):
-        print("running prepare_inputs before calculate_all...")
+        logger.info("running prepare_inputs before calculate_all...")
         ds_dict = prepare_inputs(ds_dict, spatial_chunk=spatial_chunk,
                                  model_grid_file=model_grid_file,
                                  regrid=regrid,
@@ -208,14 +208,14 @@ def calculate_all(
                                  land_mask_file=land_mask_file,
                                  land_mask_var=land_mask_var)
     else:
-        print("ds_dict already prepped -- skipping prepare_inputs.")
+        logger.info("ds_dict already prepped -- skipping prepare_inputs.")
 
     # if base_dict is provided with raw data (tas/tasmin/pr as DataArrays or Datasets),
     # run calculate_base_period_percentiles on it to get the percentile thresholds needed
     # by HWF, TNXp, PR1day, PR5day. SPI uses the raw pr directly from base_dict.
     if base_dict is not None:
         if not _is_prepared(base_dict):
-            print("running prepare_inputs on base_dict...")
+            logger.info("running prepare_inputs on base_dict...")
             base_dict = prepare_inputs(base_dict,
                         model_grid_file=model_grid_file,
                         regrid=regrid,
@@ -225,12 +225,12 @@ def calculate_all(
                         land_mask_var=land_mask_var
                     )
         else:
-            print("base_dict already prepped -- skipping prepare_inputs.")
+            logger.info("base_dict already prepped -- skipping prepare_inputs.")
         from .inputs import calculate_base_period_percentiles
         needs_pct = not any(k.endswith("p_calday") or k.endswith("p") and "_" in k
                             for k in base_dict.keys())
         if needs_pct:
-            print("base_dict looks like raw data -- computing percentile thresholds automatically...")
+            logger.info("base_dict looks like raw data -- computing percentile thresholds automatically...")
             base_dict_pct = calculate_base_period_percentiles(
                 tas=base_dict.get("tas"),
                 tasmin=base_dict.get("tasmin"),
@@ -244,9 +244,9 @@ def calculate_all(
         # and the base period must be a deliberately-chosen, separate historical
         # dataset. if you don't pass base_dict, HWF/TNXp/SPI/SMSXp/PR1day/PR5day
         # are simply skipped (see _check_vars / _REQUIRED_BASE above).
-        print("base_dict not provided -- HWF/TNXp/SPI/SMSXp/PR1day/PR5day will be skipped. "
-              "pass a base_dict (built from your own historical data via "
-              "calculate_base_period_percentiles) to include them.")
+        logger.warning("base_dict not provided -- HWF/TNXp/SPI/SMSXp/PR1day/PR5day will be skipped. "
+                       "pass a base_dict (built from your own historical data via "
+                       "calculate_base_period_percentiles) to include them.")
 
     results = {}
     skipped = {}   # metric -> reason (missing inputs)
@@ -257,25 +257,25 @@ def calculate_all(
         can_run, reason = _check_vars(ds_dict, base_dict, name)
         if not can_run:
             skipped[name] = reason
-            print(f"  skipping {name} — {reason}")
+            logger.info(f"skipping {name} — {reason}")
             return
-        print(f"  running {name}...")
+        logger.info(f"running {name}...")
         try:
             result = fn()
             if result is not None:
                 results[name] = result
             else:
-                skipped[name] = "returned None (likely a threshold mismatch — check printed warnings)"
-                print(f"  skipping {name} — returned None")
+                skipped[name] = "returned None (likely a threshold mismatch — check warnings above)"
+                logger.warning(f"skipping {name} — returned None")
         except Exception as e:
             failed[name] = str(e)
-            print(f"  ERROR in {name}: {e}")
-            print(f"    {traceback.format_exc().splitlines()[-2]}")  # one-liner from traceback
+            logger.error(f"ERROR in {name}: {e}")
+            logger.error(f"    {traceback.format_exc().splitlines()[-2]}")  # one-liner from traceback
 
-    print("=== calculate_all ===")
+    logger.info("=== calculate_all ===")
 
     # --- heat stress ---
-    print("\n-- heat stress --")
+    logger.info("-- heat stress --")
     _run("AT",      lambda: AT(ds_dict))
     _run("HI",      lambda: HI(ds_dict))
     _run("Hu",      lambda: Hu(ds_dict))
@@ -296,12 +296,12 @@ def calculate_all(
     _run("TR",      lambda: TR(ds_dict, TR_thresh=TR_thresh))
 
     # --- cold ---
-    print("\n-- cold extremes --")
+    logger.info("-- cold extremes --")
     _run("UTCIcold", lambda: UTCIcold(ds_dict))
     _run("TNXp",     lambda: TNXp(ds_dict, base_dict))
 
     # --- fire ---
-    print("\n-- fire --")
+    logger.info("-- fire --")
     _run("FI",  lambda: FI(ds_dict, fire_mask_file=fwi_mask_file))
     _run("HDW", lambda: HDW(ds_dict, fire_mask_file=fwi_mask_file))
     _run("FWI", lambda: FWI(ds_dict,
@@ -309,34 +309,34 @@ def calculate_all(
                             environmental_zone_file=environmental_zone_file))
 
     # --- air quality ---
-    print("\n-- air quality --")
+    logger.info("-- air quality --")
     _run("O3",     lambda: O3(ds_dict, mda8_scale_file=mda8_scale_file,
                                mda8_scale_varname=mda8_scale_varname))
     _run("PM2pt5", lambda: PM2pt5(ds_dict))
 
     # --- drought ---
-    print("\n-- drought --")
+    logger.info("-- drought --")
     _run("CDD",  lambda: CDD(ds_dict))
     _run("SPI",  lambda: SPI(ds_dict, base_dict))
     _run("SMSXp", lambda: SMSXp(ds_dict, base_dict))
 
     # --- disease ---
-    print("\n-- disease --")
+    logger.info("-- disease --")
     _run("VSmalaria",   lambda: VSmalaria(ds_dict, VBD_mask_file=VBD_mask_file))
     _run("VSzika",      lambda: VSzika(ds_dict, VBD_mask_file=VBD_mask_file))
     _run("VSdengueAeg", lambda: VSdengueAeg(ds_dict, VBD_mask_file=VBD_mask_file))
     _run("VSdengueAlb", lambda: VSdengueAlb(ds_dict, VBD_mask_file=VBD_mask_file))
-    _run("VbrS",        lambda: VbrS(ds_dict, coast_mask_file=coast_mask_file))
+    _run("VbrS",        lambda: VbrS(ds_dict))
 
     # --- weather ---
-    print("\n-- weather --")
+    logger.info("-- weather --")
     _run("PRXmm", lambda: PRXmm(ds_dict))
     _run("PR1day", lambda: PR1day(ds_dict, base_dict))
     _run("PR5day", lambda: PR5day(ds_dict, base_dict))
 
     # --- summary ---
     results = GCHIResults(results, skipped, failed)
-    print("\n=== calculate_all complete ===")
+    logger.info("=== calculate_all complete ===")
     results.summary()
 
     return results

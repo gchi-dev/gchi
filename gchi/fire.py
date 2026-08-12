@@ -14,6 +14,7 @@ from ._core import (
     _assign_severity_level, _tetens_sat_vapor_pressure, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds, fwi_thresholds
+from ._log import logger
 
 
 def _fmi_values(ds_dict):
@@ -33,7 +34,7 @@ def fi_values(ds_dict, fire_mask_file=None):
     if fire_mask_file is not None:
         fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
     else:
-        print("no FWI mask file provided — proceeding without infrequent burning mask")
+        logger.warning("no FWI mask file provided — proceeding without infrequent burning mask")
         fwi_mask = False  # no masking
 
     U = _check_and_convert_units(da=ds_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1")
@@ -83,7 +84,7 @@ def hdw_values(ds_dict, fire_mask_file=None):
     if fire_mask_file is not None:
         fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
     else:
-        print("no FWI mask file provided — proceeding without infrequent burning mask")
+        logger.warning("no FWI mask file provided — proceeding without infrequent burning mask")
         fwi_mask = False  # no masking
 
     T = _check_and_convert_units(da=ds_dict["tas"], input_var="tas", conv_type="C")
@@ -261,12 +262,12 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
     fwi_mask_file : str, optional
         path to infrequent burning mask file
     """
-    print("calculating FWI...")
+    logger.info("calculating FWI...")
 
     if fwi_mask_file is not None:
         fwi_mask = xr.open_dataset(fwi_mask_file).mask_infreq_burning
     else:
-        print("no FWI mask file provided — proceeding without infrequent burning mask")
+        logger.warning("no FWI mask file provided — proceeding without infrequent burning mask")
         fwi_mask = False
 
     sample = list(ds_dict.values())[0]
@@ -275,7 +276,7 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
     init = init_values if init_values is not None else {'ffmc': 85.0, 'dmc': 6.0, 'dc': 15.0}
 
     for year in years:
-        print(f"processing year {year}...")
+        logger.info(f"processing year {year}...")
         year_dict = {k: v.sel(time=str(year)).load() for k, v in ds_dict.items() if hasattr(v, 'sel')}
 
         TX = _check_and_convert_units(da=year_dict["tasmax"], input_var="tasmax", conv_type="C").where(~fwi_mask)
@@ -283,10 +284,10 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
         wind = _check_and_convert_units(da=year_dict["sfcWind"], input_var="sfcWind", conv_type="km h-1").where(~fwi_mask)
 
         if use_hursmin and 'hursmin' in year_dict:
-            print("using hursmin")
+            logger.info("using hursmin")
             rh = _check_and_convert_units(da=year_dict['hursmin'], input_var="hursmin", conv_type="%").where(~fwi_mask)
         else:
-            print("using hurs")
+            logger.info("using hurs")
             rh = _check_and_convert_units(da=year_dict['hurs'], input_var="hurs", conv_type="%").where(~fwi_mask)
         rh = rh.clip(0, 100)
 
@@ -315,7 +316,7 @@ def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, 
         fwi = template.copy()
 
         n_times = len(TX.time)
-        print(f"  {n_times} time steps...")
+        logger.info(f"  {n_times} time steps...")
 
         for i in range(n_times):
             t = TX.isel(time=i)
@@ -381,7 +382,7 @@ def FWI(ds_dict, use_hursmin=True, init_values=None,
                      init_values=init_values, fwi_mask_file=fwi_mask_file)
 
     if environmental_zone_file is None:
-        print("no environmental zone file provided — cannot assign spatially-varying FWI levels. returning raw FWI.")
+        logger.warning("no environmental zone file provided — cannot assign spatially-varying FWI levels. returning raw FWI.")
         return fwi
 
     environmental_zones = xr.open_dataset(environmental_zone_file).environmental_zone

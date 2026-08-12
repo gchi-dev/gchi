@@ -2,9 +2,13 @@
 gchi — Global Climate Hazard Index
 """
 import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"dask\..*")
+warnings.filterwarnings("ignore", category=UserWarning, module=r"xesmf\..*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered")
+
+from ._log import logger, set_verbose
 
 from .inputs import (
     prepare_inputs,
@@ -93,7 +97,7 @@ from ._core import _is_prepared
 def _auto_prep_wrapper(fn):
     def wrapped(ds_dict, *args, **kwargs):
         if not _is_prepared(ds_dict):
-            print(f"  {fn.__name__}: input not prepped -- running prepare_inputs() with default settings...")
+            logger.info(f"{fn.__name__}: input not prepped -- running prepare_inputs() with default settings...")
             ds_dict = prepare_inputs(ds_dict)
         return fn(ds_dict, *args, **kwargs)
     return wrapped
@@ -130,7 +134,7 @@ def _auto_prep_wrapper_base(fn):
     def wrapped(*args, **kwargs):
         raw_vars = {k: v for k, v in kwargs.items() if hasattr(v, "attrs")}
         if raw_vars and not _is_prepared(raw_vars):
-            print(f"  {fn.__name__}: base period inputs not prepped -- running prepare_inputs() with default settings...")
+            logger.info(f"{fn.__name__}: base period inputs not prepped -- running prepare_inputs() with default settings...")
             prepped = prepare_inputs(raw_vars)
             kwargs.update(prepped)
         return fn(*args, **kwargs)
@@ -186,4 +190,5 @@ __all__ = [
     # all
     "calculate_all",
     "GCHIResults",
+    "set_verbose",
 ]

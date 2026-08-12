@@ -10,6 +10,7 @@ from ._core import (
 )
 from .heat import _utci_values
 from .thresholds import severity_thresholds as _default_thresholds
+from ._log import logger
 
 
 def utci_cold_values(ds_dict, hum_var='both'):
@@ -60,7 +61,7 @@ def TNXp(ds_dict, base_dict, severity_thresholds=None, temp_max=15):
     )
 
     if sorted(tasmin_base_percentile_vals) != sorted(severity_thresholds):
-        print(
+        logger.warning(
             f"cannot calculate TNXp — base period tasmin percentiles don't match severity_thresholds.\n"
             f"base period: {tasmin_base_percentile_vals}. thresholds: {severity_thresholds}. skipping..."
         )

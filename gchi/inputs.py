@@ -4,6 +4,7 @@ input preparation and base period percentile calculation
 
 import xarray as xr
 from ._core import _check_and_convert_units, _drop_all_bounds, _regrid_xr
+from ._log import logger, set_verbose
 
 SOFTWARE_VERSION = "0.0.0"
 
@@ -39,6 +40,7 @@ def show_expected_ds_format():
         "mass_fraction_of_particulate_organic_matter_dry_aerosol_particles_in_air": "mmroa",
         "mass_fraction_of_sulfate_dry_aerosol_particles_in_air": "mmrso4",
         "mass_fraction_of_sea_salt_dry_aerosol_particles_in_air": "mmrss",
+        "mass_content_of_water_in_soil_layer": "mrsos",
         "mole_fraction_of_ozone_in_air": "o3",
         "sea_surface_salinity": "sos",
         "sea_surface_temperature": "tos",
@@ -107,7 +109,8 @@ _ANTARCTIC_LAT = -60
 
 def prepare_inputs(ds_dict, spatial_chunk="auto",
                    model_grid_file="default", regrid=True, regrid_method="bilinear",
-                   mask_land=True, land_mask_file="default", land_mask_var="land_mask"):
+                   mask_land=True, land_mask_file="default", land_mask_var="land_mask",
+                   verbose=False):
     """
     Chunk all DataArrays in ds_dict for efficient computation.
     Time is kept as one contiguous chunk (required for quantile/groupby ops).
@@ -152,14 +155,19 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         your own path to use a custom mask.
     land_mask_var : str
         variable name in the land mask dataset (default 'land_mask')
+    verbose : bool
+        print progress messages for this run (default False). equivalent to
+        calling gchi.set_verbose(True) beforehand -- note this affects the
+        whole session's logging level, not just this call.
 
     Returns
     -------
     dict of chunked xr.DataArrays
     """
     import numpy as np
+    set_verbose(verbose)
     xr.set_options(keep_attrs=True)
-    print("preparing inputs for efficient computation...")
+    logger.info("preparing inputs for efficient computation...")
 
     # resolve "default" sentinels to cached (downloading if needed) local paths.
     # explicit None still means "skip this step", same as before.
@@ -183,15 +191,15 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
             if has_vert:
-                print(f"  {key}: extracting surface level before regrid...")
+                logger.info(f"{key}: extracting surface level before regrid...")
                 da = _get_surface(da, key)
 
         # regridding
         if target_grid is not None:
             if _grids_match(da, target_grid):
-                print(f"  {key}: already on target grid -- skipping regrid")
+                logger.info(f"{key}: already on target grid -- skipping regrid")
             else:
-                print(f"  {key}: regridding...")
+                logger.info(f"{key}: regridding...")
                 da = _regrid_xr(da, target_grid, method=regrid_method, name=key)
         elif not regrid:
             pass  # user explicitly disabled regrid
@@ -213,7 +221,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
                         "or (3) set mask_land=False to skip land masking."
                     )
             else:
-                print("  WARNING: mask_land=True but no land_mask_file provided -- skipping land masking.")
+                logger.warning("mask_land=True but no land_mask_file provided -- skipping land masking.")
 
 
         if land_mask is not None and key not in _OCEAN_VARS:
@@ -234,9 +242,9 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
 
         has_unit = any(k.lower() in ["unit", "units"] for k in da.attrs)
         if not has_unit:
-            print(f"  WARNING: '{key}' has no 'units' attribute -- units will be guessed. add units attr to avoid errors.")
+            logger.warning(f"'{key}' has no 'units' attribute -- units will be guessed. add units attr to avoid errors.")
 
-    print("input preparation complete.")
+    logger.info("input preparation complete.")
     return ds_dict_prepared
 
 
@@ -301,8 +309,8 @@ def calculate_base_period_percentiles(
         data_start, data_end = int(years_in_data.min()), int(years_in_data.max())
         if base_start == _DEFAULT_BASE_YEARS[0] and base_end == _DEFAULT_BASE_YEARS[1]:
             if data_start > base_start or data_end < base_end:
-                print(
-                    f"WARNING ({var_name}): data covers {data_start}–{data_end}, "
+                logger.warning(
+                    f"({var_name}): data covers {data_start}–{data_end}, "
                     f"which doesn't fully span the default base period "
                     f"{base_start}–{base_end}. proceeding with available years."
                 )
@@ -350,7 +358,7 @@ def calculate_base_period_percentiles(
 
     # tas -- calendar-day percentiles
     if tas is not None:
-        print("calculating tas base period percentiles...")
+        logger.info("calculating tas base period percentiles...")
         tas_base, actual_start, actual_end = _slice_to_base(
             _check_and_convert_units(da=tas, input_var="tas", conv_type="C"), "tas"
         )
@@ -369,7 +377,7 @@ def calculate_base_period_percentiles(
 
     # tasmax -- stored for HWF (no percentile calc needed, just a slice)
     if tasmax is not None:
-        print("converting tasmax to degC for base period storage...")
+        logger.info("converting tasmax to degC for base period storage...")
         tasmax_base, *_ = _slice_to_base(
             _check_and_convert_units(da=tasmax, input_var="tasmax", conv_type="C"), "tasmax"
         )
@@ -377,7 +385,7 @@ def calculate_base_period_percentiles(
 
     # tasmin -- all-year cold-tail percentiles
     if tasmin is not None:
-        print("calculating tasmin base period percentiles...")
+        logger.info("calculating tasmin base period percentiles...")
         tasmin_base, actual_start, actual_end = _slice_to_base(
             _check_and_convert_units(da=tasmin, input_var="tasmin", conv_type="C"), "tasmin"
         )
@@ -395,7 +403,7 @@ def calculate_base_period_percentiles(
 
     # pr -- wet-day percentiles + rx5day percentiles
     if pr is not None:
-        print("calculating pr base period percentiles...")
+        logger.info("calculating pr base period percentiles...")
         pr_base, actual_start, actual_end = _slice_to_base(
             _check_and_convert_units(da=pr, input_var="pr", conv_type="mm day-1"), "pr"
         )
@@ -418,7 +426,7 @@ def calculate_base_period_percentiles(
 
         # pr5day -- percentile of all 5-day rolling sums on wet windows
         # consistent with PR1day: uses (100-p)/100 fraction for level assignment
-        print("calculating pr5day base period percentiles...")
+        logger.info("calculating pr5day base period percentiles...")
         pr5day_rolling = (
             pr_base
             .rolling(time=5, min_periods=5)
@@ -439,7 +447,7 @@ def calculate_base_period_percentiles(
             ),
         ))
     if mrsos is not None:
-        print("calculating mrsos base period percentiles...")
+        logger.info("calculating mrsos base period percentiles...")
         mrsos_base, actual_start, actual_end = _slice_to_base(mrsos, "mrsos")  # no unit conversion
         mrsos_base = mrsos_base.chunk({"time": -1})
 
@@ -453,5 +461,5 @@ def calculate_base_period_percentiles(
             notes_fmt=lambda p: f"all-year {p}th percentile of mrsos. one value per grid cell. no unit conversion.",
         ))
 
-    print(f"base period percentiles complete. keys: {list(base_dict.keys())}")
+    logger.info(f"base period percentiles complete. keys: {list(base_dict.keys())}")
     return base_dict

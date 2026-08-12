@@ -12,6 +12,7 @@ from ._core import (
     _get_tsteps, _ann_frac, _tetens_sat_vapor_pressure, _nan_mask, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds
+from ._log import logger
 
 
 
@@ -34,7 +35,7 @@ def _wbt_values(ds_dict):
     if use_huss:
         q = _check_and_convert_units(da=ds_dict['huss'], input_var="huss", conv_type="fraction")
         if q.sizes.get("time") != TX.sizes.get("time"):
-            print(f"  WBT: huss time resolution ({q.sizes.get('time')} steps) doesn't match "
+            logger.warning(f"WBT: huss time resolution ({q.sizes.get('time')} steps) doesn't match "
                   f"tasmax ({TX.sizes.get('time')} steps) -- falling back to hurs instead.")
             use_huss = False
 

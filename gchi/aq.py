@@ -17,6 +17,7 @@ from ._core import (
     _assign_severity_level, _get_tsteps, _add_metric_metadata,
 )
 from .thresholds import severity_thresholds as _default_thresholds
+from ._log import logger
 
 
 def _detect_daily(da):
@@ -48,13 +49,13 @@ def o3_values(ds_dict):
 
     convert_o3 = True
     if units_attr is None:
-        print("no units attribute for ozone. assuming mol mol-1.")
+        logger.warning("no units attribute for ozone. assuming mol mol-1.")
     elif units_attr in ["mol mol-1", "mol/mol", "mol mol^-1"]:
         convert_o3 = True
     elif units_attr in ["ug/m^3", "ug m^-3", "ug m-3"]:
         convert_o3 = False
     elif units_attr not in ["mol mol-1", "mol/mol", "mol mol^-1", "ug m-3", "ug/m3", "ug m^-3", "ug/m^3"]:
-        print(f"ozone units '{units_attr}' not recognized. must be mol mol-1 or ug m-3. skipping O3...")
+        logger.warning(f"ozone units '{units_attr}' not recognized. must be mol mol-1 or ug m-3. skipping O3...")
         return None
 
     if convert_o3:
@@ -65,9 +66,9 @@ def o3_values(ds_dict):
         # detect resolution before collapsing
         is_daily = _detect_daily(O3)
         if is_daily:
-            print("  PM2pt5: detected daily input")
+            logger.info("PM2pt5: detected daily input")
         else:
-            print("  PM2pt5: detected monthly input -- ensuring ps/T are monthly")
+            logger.info("PM2pt5: detected monthly input -- ensuring ps/T are monthly")
             # it is possible that ps/tas daily may be pulled for monthly PM. must get monthly averages
             # always collapse to monthly
             T = T.resample(time="1ME").mean()
@@ -78,7 +79,7 @@ def o3_values(ds_dict):
                 ps["time"] = O3["time"].values
                 huss["time"] = O3["time"].values
             except:
-                print("ps/T time dim don't align with O3 time") # for production, make this more elegant. 
+                logger.warning("ps/T time dim don't align with O3 time")  # for production, make this more elegant.
 
         Tv = T * (1 + 0.608 * huss) # virtual temp
         M_O3 = 48    # molecular weight of ozone g/mol
@@ -126,9 +127,9 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_
     # detect resolution before collapsing -- determines which threshold set to use
     is_daily = _detect_daily(O3_val)
     if is_daily:
-        print("  O3: detected daily input -- using O3day thresholds")
+        logger.info("O3: detected daily input -- using O3day thresholds")
     else:
-        print("  O3: detected monthly input -- using O3mon thresholds")
+        logger.info("O3: detected monthly input -- using O3mon thresholds")
         # always collapse to monthly
         O3_val = O3_val.resample(time="1ME").mean().load()
 
@@ -137,7 +138,7 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_
 
 
     if mda8_scale_file is None:
-        print("  mda8_scale_file not provided -- skipping MDA8 scaling. using raw monthly O3.")
+        logger.warning("mda8_scale_file not provided -- skipping MDA8 scaling. using raw monthly O3.")
     else:
         mda8_scale_factor = xr.open_dataset(mda8_scale_file)[mda8_scale_varname]
         O3_val = O3_val.groupby("time.month") / mda8_scale_factor
@@ -164,7 +165,7 @@ def pm25_values(ds_dict):
     attrs_lower = {k.lower(): v for k, v in BC.attrs.items()}
     found_key = next((k for k in {"unit", "units"} if k in attrs_lower), None)
     if found_key and attrs_lower[found_key] in ["ug/m^3", "ug m^-3", "ug m-3"]:
-        print("  detected PM2.5 input units as ug m-3. assuming all aerosol variables have equivalent units.")
+        logger.warning("detected PM2.5 input units as ug m-3. assuming all aerosol variables have equivalent units.")
         return BC + OA + SO4 + (0.25 * SS) + (0.1 * DU)
 
     # convert from kg kg-1 and compute air density
@@ -180,9 +181,9 @@ def pm25_values(ds_dict):
     # detect resolution before collapsing
     is_daily = _detect_daily(BC)
     if is_daily:
-        print("  PM2pt5: detected daily input")
+        logger.info("PM2pt5: detected daily input")
     else:
-        print("  PM2pt5: detected monthly input -- ensuring ps/T are monthly")
+        logger.info("PM2pt5: detected monthly input -- ensuring ps/T are monthly")
         # it is possible that ps/tas daily may be pulled for monthly PM. must get monthly averages
         # always collapse to monthly
         T = T.resample(time="1ME").mean()
@@ -191,7 +192,7 @@ def pm25_values(ds_dict):
             T["time"] = BC["time"].values
             ps["time"] = BC["time"].values
         except:
-            print("ps/T time dim don't align with PM time") # for production, make this more elegant. 
+            logger.warning("ps/T time dim don't align with PM time")  # for production, make this more elegant.
 
     rho = ps / (287 * T)
 
@@ -220,9 +221,9 @@ def PM2pt5(ds_dict, severity_thresholds=None):
     # detect resolution before collapsing
     is_daily = _detect_daily(pm2pt5)
     if is_daily:
-        print("  PM2pt5: detected daily input -- using PM2pt5day thresholds")
+        logger.info("PM2pt5: detected daily input -- using PM2pt5day thresholds")
     else:
-        print("  PM2pt5: detected monthly input -- using PM2pt5mon thresholds")
+        logger.info("PM2pt5: detected monthly input -- using PM2pt5mon thresholds")
         # always collapse to monthly
         pm2pt5 = pm2pt5.resample(time="1ME").mean()
 

@@ -6,6 +6,7 @@ not intended to be called directly by users
 import numpy as np
 import xarray as xr
 import xesmf as xe
+from ._log import logger
 
 
 def _drop_all_bounds(da):
@@ -30,52 +31,52 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
         minv = float(sample.min(skipna=True))
         maxv = float(sample.max(skipna=True))
     except Exception as e:
-        print(f"data value spot check failed: {e}\nskipping units spot check. recommended: add units attrs and re-run")
+        logger.warning(f"data value spot check failed: {e}\nskipping units spot check. recommended: add units attrs and re-run")
         return
 
     if units_attr == "C":
-        if not (-100 < minv < 60 and -100 < maxv < 60):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °C.")
+        if not (-125 < minv < 65 and -125 < maxv < 65):
+            logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °C.")
     elif units_attr == "K":
-        if not (150 < minv < 400 and 150 < maxv < 400):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in K.")
+        if not (150 < minv < 340 and 150 < maxv < 340):
+            logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in K.")
     elif units_attr == "F":
-        if not (-150 < minv < 140 and -150 < maxv < 140):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °F.")
+        if not (-195 < minv < 150 and -195 < maxv < 150):
+            logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °F.")
     elif units_attr == "fraction":
         if not (0 <= minv and maxv <= 1.10):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for relative humidity (fraction). clipped to 0.001-0.999999.")
+            logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for relative humidity (fraction). clipped to 0.001-0.999999.")
     elif units_attr == "%":
         if not (0 <= minv and maxv <= 110):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for relative humidity (%). clipped to 0.1-99.9999.")
+            logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for relative humidity (%). clipped to 0.1-99.9999.")
     elif units_attr == "hPa":
         if not (100 <= minv <= 1200 and 100 <= maxv <= 1200):
-            print(f"WARNING: values {minv:.1f}–{maxv:.1f} outside reasonable range for pressure (hPa).")
+            logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for pressure (hPa).")
     elif units_attr == "mm day-1":
         if maxv > 300:
-            print(f"WARNING: max value {maxv:.3f} unusually large for precipitation (mm/day): check units.")
+            logger.warning(f"max value {maxv:.3f} unusually large for precipitation (mm/day): check units.")
         elif minv < 0:
-            print(f"WARNING: min value {minv:.3f} negative for precipitation (mm/day): check units.")
+            logger.warning(f"min value {minv:.3f} negative for precipitation (mm/day): check units.")
     elif units_attr == "m s-1":
         if maxv > 100:
-            print(f"WARNING: max value {maxv:.3f} unusually large for wind speed (m s-1): check units.")
+            logger.warning(f"max value {maxv:.3f} unusually large for wind speed (m s-1): check units.")
         if minv < 0:
-            print(f"WARNING: min value {minv:.3f} negative for wind speed (m s-1): check it's speed not u/v component.")
+            logger.warning(f"min value {minv:.3f} negative for wind speed (m s-1): check it's speed not u/v component.")
     elif units_attr == "km h-1":
         if maxv > 360:
-            print(f"WARNING: max value {maxv:.3f} unusually large for wind speed (km h-1): check units.")
+            logger.warning(f"max value {maxv:.3f} unusually large for wind speed (km h-1): check units.")
         if minv < 0:
-            print(f"WARNING: min value {minv:.3f} negative for wind speed (km h-1): check it's speed not u/v component.")
+            logger.warning(f"min value {minv:.3f} negative for wind speed (km h-1): check it's speed not u/v component.")
     elif units_attr == "psu":
-        if maxv > 43:
-            print(f"WARNING: max value {maxv:.3f} unusually large for sea surface salinity (psu): check units.")
-        if minv < 5:
-            print(f"WARNING: min value {minv:.3f} unusually small for sea surface salinity (psu).")
+        if maxv > 50:
+            logger.warning(f"max value {maxv:.3f} unusually large for sea surface salinity (psu): check units.")
+        if minv < 1:
+            logger.warning(f"min value {minv:.3f} unusually small for sea surface salinity (psu).")
     elif units_attr == "kg kg-1":
         if maxv > 1e-4:
-            print(f"WARNING: max value {maxv:.3f} unusually large for aerosol inputs (kg kg-1): check units.")
+            logger.warning(f"max value {maxv:.3f} unusually large for aerosol inputs (kg kg-1): check units.")
         if minv < 0:
-            print(f"WARNING: min value {maxv:.3f} negative for aerosol inputs (kg kg-1): check units.")
+            logger.warning(f"min value {maxv:.3f} negative for aerosol inputs (kg kg-1): check units.")
 
 
 def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
@@ -161,7 +162,7 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
             minv = float(sample.min(skipna=True))
             maxv = float(sample.max(skipna=True))
         except Exception as e:
-            print(f"data value spot check failed: {e}\nskipping units spot check. add units attrs and re-run")
+            logger.warning(f"data value spot check failed: {e}\nskipping units spot check. add units attrs and re-run")
             minv, maxv = np.nan, np.nan
 
         if np.isnan(minv) or np.isnan(maxv):
@@ -187,24 +188,24 @@ def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
                 units_attr = "mm day-1"
         elif conv_type in ["m s-1", "km h-1"]:
             if maxv < 100:
-                print(f"no units attribute found for wind speed. assuming m s-1. please check.")
+                logger.warning(f"no units attribute found for wind speed. assuming m s-1. please check.")
                 units_attr = "m s-1"
             else:
-                print(f"no units attribute found for wind speed. assuming km h-1. please check.")
+                logger.warning(f"no units attribute found for wind speed. assuming km h-1. please check.")
                 units_attr = "km h-1"
         elif conv_type == "psu":
-            print(f"no units attribute found for sea surface salinity. assuming psu. please check.")
+            logger.warning(f"no units attribute found for sea surface salinity. assuming psu. please check.")
             units_attr = "psu"
         elif conv_type == "kg kg-1":
-            print(f"no units attribute found for PM inputs. assuming kg kg-1. please check.")
+            logger.warning(f"no units attribute found for PM inputs. assuming kg kg-1. please check.")
             units_attr = "kg kg-1"
         else:
             units_attr = "unknown"
 
         if units_attr not in [None, "unknown"]:
-            print(f"guessed {input_var} units as '{units_attr}' based on data values. min: {round(minv, 3)} max: {round(maxv, 3)}.")
+            logger.warning(f"guessed {input_var} units as '{units_attr}' based on data values. min: {round(minv, 3)} max: {round(maxv, 3)}.")
         else:
-            print(f"could not guess {input_var} units. min: {round(minv, 3)} max: {round(maxv, 3)}.\nplease add a units attribute and re-run.")
+            logger.warning(f"could not guess {input_var} units. min: {round(minv, 3)} max: {round(maxv, 3)}.\nplease add a units attribute and re-run.")
 
     # already correct units — just sanity check and return
     if units_attr == conv_type:
@@ -271,7 +272,7 @@ def _get_tsteps(da):
         steps_per_year.attrs["units"] = "time steps yr-1"
     except Exception:
         steps_per_year = 365
-        print("could not calculate time steps per year. assuming daily data.")
+        logger.warning("could not calculate time steps per year. assuming daily data.")
     return steps_per_year
 
 
@@ -316,7 +317,7 @@ def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="a
         elif exceedance_dir.lower() == "below":
             da_count = (da < th).resample(time='1YE').sum(dim='time', skipna=True)
         else:
-            print(f"exceedance direction '{exceedance_dir}' not recognized. must be 'above' or 'below'")
+            logger.warning(f"exceedance direction '{exceedance_dir}' not recognized. must be 'above' or 'below'")
             return None
         da_list.append(da_count)
 
@@ -599,6 +600,6 @@ def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
             result[var].attrs = {**var_attrs, **gchi_attrs}
 
     except Exception as e:
-        print(f"  WARNING: could not add metadata to {metric_name} output: {e}")
+        logger.warning(f"could not add metadata to {metric_name} output: {e}")
 
     return result
