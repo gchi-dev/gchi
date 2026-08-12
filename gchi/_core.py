@@ -35,13 +35,13 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
         return
 
     if units_attr == "C":
-        if not (-100 < minv < 60 and -100 < maxv < 60):
+        if not (-125 < minv < 65 and -125 < maxv < 65):
             logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °C.")
     elif units_attr == "K":
-        if not (150 < minv < 400 and 150 < maxv < 400):
+        if not (150 < minv < 340 and 150 < maxv < 340):
             logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in K.")
     elif units_attr == "F":
-        if not (-150 < minv < 140 and -150 < maxv < 140):
+        if not (-195 < minv < 150 and -195 < maxv < 150):
             logger.warning(f"values {minv:.1f}–{maxv:.1f} outside reasonable range for temperature in °F.")
     elif units_attr == "fraction":
         if not (0 <= minv and maxv <= 1.10):
@@ -68,7 +68,7 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
         if minv < 0:
             logger.warning(f"min value {minv:.3f} negative for wind speed (km h-1): check it's speed not u/v component.")
     elif units_attr == "psu":
-        if maxv > 43:
+        if maxv > 50:
             logger.warning(f"max value {maxv:.3f} unusually large for sea surface salinity (psu): check units.")
         if minv < 5:
             logger.warning(f"min value {minv:.3f} unusually small for sea surface salinity (psu).")
