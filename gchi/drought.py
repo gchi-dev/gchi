@@ -1,5 +1,5 @@
 """
-drought metrics: CDD, SPI, SMSXp
+drought metrics: DSD, SPI, SMSXp
 
 all work well chunked spatially.
 SPI uses apply_ufunc with dask="parallelized".
@@ -30,25 +30,25 @@ def _extract_da(val, var_name):
         return val[list(val.data_vars)[0]]
     raise TypeError(f"base_dict['{var_name}'] must be a DataArray or Dataset, got {type(val)}")
 
-def cdd_values(ds_dict):
+def dsd_values(ds_dict):
     """
-    Daily precipitation (mm day-1) — for CDD calculation.
+    Daily precipitation (mm day-1) — for DSD calculation.
     Exposed so users can inspect the raw precip field if needed.
     """
     return _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
 
 
-def CDD(ds_dict, severity_thresholds=None, min_threshold=10):
+def DSD(ds_dict, severity_thresholds=None, min_threshold=10):
     """
-    Consecutive Dry Days — fraction of year that falls within dry spells of
-    at least min_threshold days (default 5).
+    Dry Spell Days — fraction of year that falls within dry spells of
+    at least min_threshold days (default 10).
 
     Uses a rolling window approach: counts all days that are part of a qualifying dry spell.
     """
     if severity_thresholds is None:
-        severity_thresholds = _default_thresholds["CDD"]
+        severity_thresholds = _default_thresholds["DSD"]
 
-    PR = cdd_values(ds_dict)
+    PR = dsd_values(ds_dict)
     steps_per_year = _get_tsteps(PR)
 
     dry_mask = PR < 1
@@ -60,11 +60,12 @@ def CDD(ds_dict, severity_thresholds=None, min_threshold=10):
     for shift in range(min_threshold):
         mask_expanded |= window_all_dry.shift(time=shift, fill_value=False)
 
-    CDD_val = PR.where(mask_expanded).resample(time="1YE").count()
-    CDD_val = CDD_val.where(~_nan_mask(PR))
-    CDD_val = _ann_frac(CDD_val, steps_per_year).rename("CDD")
-    result = _assign_severity_level(CDD_val, frac_thresholds=severity_thresholds)
-    return _add_metric_metadata(result, "CDD", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"consecutive dry days: dry spell >= {min_threshold} days with pr < 1 mm/day.")
+    DSD_val = PR.where(mask_expanded).resample(time="1YE").count()
+    DSD_val = DSD_val.where(~_nan_mask(PR))
+    DSD_val = _ann_frac(DSD_val, steps_per_year).rename("DSD")
+    result = _assign_severity_level(DSD_val, frac_thresholds=severity_thresholds)
+    return _add_metric_metadata(result, "DSD", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"dry spell days: dry spell >= {min_threshold} days with pr < 1 mm/day.")
+
 
 def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
     """
