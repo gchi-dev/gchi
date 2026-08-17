@@ -53,7 +53,7 @@ from .aq import (
 
 # drought
 from .drought import (
-    CDD, cdd_values,
+    DSD, dsd_values,
     SPI,
     SMSXp,
 )
@@ -76,6 +76,8 @@ from .weather import (
 )
 
 from .calculate_all import calculate_all, GCHIResults
+
+from .composites import category_averages, composite_average, DEFAULT_CATEGORIES
 
 from ._core import _is_prepared
 
@@ -107,7 +109,7 @@ _auto_prep_metrics = [
     "UTCIcold", "TNXp",
     "FI", "HDW", "FWI",
     "O3", "PM2pt5",
-    "CDD", "SPI", "SMSXp",
+    "DSD", "SPI", "SMSXp",
     "VSmalaria", "VSzika", "VSdengueAeg", "VSdengueAlb", "VbrS",
     "PRXmm", "PR1day", "PR5day",
 ]
@@ -173,7 +175,7 @@ __all__ = [
     "O3", "o3_values",
     "PM2pt5", "pm25_values",
     # drought
-    "CDD", "cdd_values",
+    "DSD", "dsd_values",
     "SPI",
     "SMSXp",
     # disease
@@ -191,4 +193,7 @@ __all__ = [
     "calculate_all",
     "GCHIResults",
     "set_verbose",
+    "category_averages",
+    "composite_average",
+    "DEFAULT_CATEGORIES",
 ]

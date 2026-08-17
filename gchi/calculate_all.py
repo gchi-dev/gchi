@@ -25,7 +25,7 @@ from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR, wbt_values
 from .cold import UTCIcold, TNXp
 from .fire import FI, HDW, FWI
 from .aq import O3, PM2pt5
-from .drought import CDD, SPI, SMSXp
+from .drought import DSD, SPI, SMSXp
 from .disease import VSmalaria, VSzika, VSdengueAeg, VSdengueAlb, VbrS
 from .weather import PRXmm, PR1day, PR5day
 from ._core import _is_prepared
@@ -74,7 +74,7 @@ _REQUIRED_VARS = {
     "FWI":         {"tasmax", "pr", "sfcWind"},  # also hurs or hursmin
     "O3":          {"o3", "tas", "ps"},
     "PM2pt5":      {"mmrbc", "mmrdust", "mmroa", "mmrso4", "mmrss", "tas", "ps"},
-    "CDD":         {"pr"},
+    "DSD":         {"pr"},
     "SPI":         {"pr"},
     "SMSXp":       {"mrsos"},
     "VSmalaria":   {"tas"},
@@ -316,7 +316,7 @@ def calculate_all(
 
     # --- drought ---
     logger.info("-- drought --")
-    _run("CDD",  lambda: CDD(ds_dict))
+    _run("DSD",  lambda: DSD(ds_dict))
     _run("SPI",  lambda: SPI(ds_dict, base_dict))
     _run("SMSXp", lambda: SMSXp(ds_dict, base_dict))
 
