@@ -191,8 +191,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
             if has_vert:
-                logger.info(f"{key}: extracting surface level before regrid...")
-                da = _get_surface(da, key)
+                logger.warning(f"{key}: Multiple atmospheric levels detected. Pass only surface level.")
 
         # regridding
         if target_grid is not None:
