@@ -24,13 +24,13 @@ from ._log import logger
 # not present in your results are skipped automatically, no need to prune
 # this list yourself.
 DEFAULT_CATEGORIES = {
-    "heat stress":        ["AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "TXC", "TR", "HWF"],
-    "cold stress":        ["UTCIcold", "TNXp"],
-    "fire weather":       ["FI", "HDW", "FWI"],
-    "air quality":        ["O3", "PM2pt5"],
+    "heat_stress":        ["AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "TXC", "TR", "HWF"],
+    "cold_stress":        ["UTCIcold", "TNXp"],
+    "fire_weather":       ["FI", "HDW", "FWI"],
+    "air_quality":        ["O3", "PM2pt5"],
     "drought":            ["DSD", "SPI", "SMSXp"],
-    "infectious disease": ["VSmalaria", "VSzika", "VSdengueAeg", "VSdengueAlb", "VbrS"],
-    "weather extremes":   ["PRXmm", "PR1day", "PR5day"],
+    "infectious_disease": ["VSmalaria", "VSzika", "VSdengueAeg", "VSdengueAlb", "VbrS"],
+    "weather_extremes":   ["PRXmm", "PR1day", "PR5day"],
 }
 
 # metrics where a severity level of exactly 0 means "not applicable here"
