@@ -1,5 +1,5 @@
 """
-internal helpers — unit conversion, exceedance counting, level assignment, etc.
+helpers for unit conversion, exceedance counting, level assignment, etc.
 not intended to be called directly by users
 """
 
@@ -81,19 +81,12 @@ def _sanity_check_units(da: xr.DataArray, units_attr: str):
 
 def _check_and_convert_units(da: xr.DataArray, input_var: str, conv_type: str):
     """
-    Check and convert the units of a DataArray.
-
-    Parameters
-    ----------
-    da : xr.DataArray
-    input_var : str
-        variable name (for print messages)
-    conv_type : str
-        target unit — one of 'C','K','F','fraction','%','hPa','Pa','mm day-1','m s-1','km h-1','psu','kg kg-1'
-
-    Returns
-    -------
-    xr.DataArray with updated units attribute
+    Check and convert the units of an xr data array
+    The inputs should have a units attribute: "units"
+    Below are a series of units expected based on the input variables 
+    This function serves two purposes: 1) convert between units (e.g. K to °F) and
+    2) if a units attribute is not included in the metadata, guess the units based on 
+    the input variable type and range of values
     """
     da_out = da.copy()
 
@@ -277,29 +270,27 @@ def _get_tsteps(da):
 
 
 def _ann_frac(da, steps_per_year):
-    """convert annual counts to fraction of year -- preserves time dimension"""
+    """convert annual counts to fraction of year. preserves time dimension"""
     return da / steps_per_year
 
 
 def _nan_mask(da):
-    """True where ALL timesteps in a year are NaN — used to restore NaNs after resample"""
+    """True where ALL timesteps in a year are nan — used to restore nans after resample"""
     return da.isnull().resample(time='1YE').all(dim='time')
 
 def _apply_nan_mask(da_resampled, nan_mask):
-    """restore NaNs after resampling — nan_mask must be computed from pre-resample data"""
+    """restore nans after resampling — nan_mask must be calculated from pre-resample data"""
     return da_resampled.where(~nan_mask)
 
 
 def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="above"):
     """
     Count annual days exceeding each threshold, return as fraction of year.
-
-    da : xr.DataArray with 'time' dimension
-    severity_thresholds : list of threshold values (will be sorted)
+    severity_thresholds : list of threshold values (see thresholds.py for defaults)
     var_name : output DataArray name
     exceedance_dir : 'above' (da > th) or 'below' (da < th)
 
-    Returns DataArray with dims ('time', 'level', ...) and 'level_values' attr
+    returns da with dims ('time', 'level', etc) and level_values attr
     """
     if exceedance_dir.lower() == "below":
         thresholds = np.sort(severity_thresholds)[::-1]
@@ -307,7 +298,7 @@ def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="a
         thresholds = np.sort(severity_thresholds)
 
     steps_per_year = _get_tsteps(da)
-    # compute before any resampling so land/ocean NaNs are captured
+    # calc before any resampling so land/ocean nans are captured
     nan_mask = _nan_mask(da)
 
     da_list = []
@@ -333,11 +324,10 @@ def _annual_exceedance_frac(da, severity_thresholds, var_name, exceedance_dir="a
 def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir="above"):
     """
     Conditional annual exceedance for air quality: only counts exceedances in years where
-    the annual average itself crosses the threshold. Otherwise count = 0.
+    the annual average itself crosses the threshold. Otherwise count = 0
 
-    da : xr.DataArray with 'time' dimension
     severity_thresholds : list of threshold values
-    var_name : output DataArray name
+    var_name : output da name
     """
     if exceedance_dir.lower() == "below":
         thresholds = np.sort(severity_thresholds)[::-1]
@@ -345,7 +335,7 @@ def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir
         thresholds = np.sort(severity_thresholds)
 
     steps_per_year = _get_tsteps(da)
-    # compute before any resampling so land/ocean NaNs are captured
+    # calculate before any resampling so land/ocean NaNs are captured
     all_nan_mask = _nan_mask(da)
     da_annual_mean = da.resample(time='1YE').mean(dim='time')
 
@@ -374,10 +364,11 @@ def _annual_exceedance_frac_aq(da, severity_thresholds, var_name, exceedance_dir
 
 def _annual_exceedance_frac_fwi(da_fwi, da_zones, fwi_thresholds, var_name='FWI'):
     """
-    FWI-specific exceedance — uses spatially varying thresholds based on environmental zone.
+    FWI-specific exceedance 
+    uses spatially varying thresholds based on environmental zone
 
-    da_fwi : xr.DataArray (lat, lon, time)
-    da_zones : xr.DataArray (lat, lon) integer zone codes 1–18
+    da_fwi : xr da (lat, lon, time)
+    da_zones : xr da (lat, lon) integer zone codes 1–18
     fwi_thresholds : dict mapping letter -> [t1, t2, t3, t4]
     """
     zone_letters = np.vectorize(
@@ -403,7 +394,7 @@ def _annual_exceedance_frac_fwi(da_fwi, da_zones, fwi_thresholds, var_name='FWI'
         da_count = (da_fwi > th).resample(time='1YE').sum('time')
         da_list.append(da_count)
 
-    # computed before resampling above
+    # calculated before resampling above
     nan_mask = _nan_mask(da_fwi)
     da_exceed = xr.concat(da_list, dim='level').assign_coords(level=[1, 2, 3, 4])
     da_exceed = _apply_nan_mask(da_exceed, nan_mask)
@@ -417,15 +408,15 @@ def _annual_exceedance_frac_fwi(da_fwi, da_zones, fwi_thresholds, var_name='FWI'
 
 def _assign_severity_level(da, frac_thresholds=None):
     """
-    Assign severity level (1–4) per year per grid cell based on highest threshold crossed.
+    Assign severity level (1–4) per year per grid cell based on highest threshold crossed
 
     For vars with a 'level' dimension (threshold-based exceedance):
-        level is the highest level where exceedance fraction > min_days_frac (0.01)
+    --level is the highest level where exceedance fraction > min_days_frac (0.01)
 
     For vars without a 'level' dimension (single value per year):
-        compares annual value against frac_thresholds directly
+    --compares annual value against frac_thresholds directly
 
-    Returns a Dataset with the original da + a {name}_severity_level variable.
+    Returns a ds with the original da + a {name}_severity_level variable
     """
     min_days_frac = 0.01  # must exceed > 1% of year to be valid
 
@@ -481,42 +472,31 @@ def _regrid_xr(ds_in, regrid_to, method='bilinear', name=None):
 def _add_metric_metadata(result, metric_name, ds_dict, severity_thresholds=None,
                           units="fraction of year", notes=None, extra=None):
     """
-    Add standardised gchi metadata to a metric output Dataset.
-    Preserves any input model/simulation attrs found in ds_dict.
-    Safe to call -- if anything fails, prints a warning and returns result unchanged.
+    Add standardised gchi metadata to a metric output Dataset
 
-    Parameters
-    ----------
-    result : xr.Dataset
-        output from a metric function
-    metric_name : str
-        e.g. "AT", "WBGT", "PR1day"
-    ds_dict : dict
-        input data dict -- used to harvest model/simulation attrs
-    severity_thresholds : list, optional
-        threshold values used for level assignment
-    units : str
-        units of the metric output values (default "fraction of year")
-    notes : str, optional
-        methodological decisions or approximations made
-    extra : dict, optional
-        any additional metric-specific metadata key/value pairs
+    result : xr ds out 
+    metric_name : e.g. "AT", "WBGT", "PR1day"
+    ds_dict : dict. input data dict used to harvest model/simulation attrs
+    severity_thresholds: list, threshold values used for level assignment
+    units: units of the metric output values (default "fraction of year")
+    notes: optional, methodological decisions or approximations made
+    extra : optional, any additional metric-specific metadata key/value pairs
     """
     from .inputs import SOFTWARE_VERSION
     from .thresholds import severity_thresholds as _default_thresholds
     import datetime
 
     try:
-        # collect input model attrs from ds_dict -- cmip6 and similar models
+        # collect input model attrs from ds_dict - cmip6 and similar models
         # carry these on their DataArrays. we harvest whatever is there so
-        # non-cmip inputs work fine too.
+        # non-cmip inputs work fine too
         # attrs to drop from source data — noisy/irrelevant for gchi outputs
         _drop_attrs = {
             "standard_name", "comment", "cell_methods", "cell_measures",
             "history", "long_name", "original_name", "description",
         }
 
-        # attrs to harvest from source DataArrays if present
+        # attrs to harvest from source da's if present
         _model_keys = [
             "source_id", "model_id", "institution_id", "experiment_id",
             "variant_label", "realization", "grid_label", "mip_era",

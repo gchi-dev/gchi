@@ -1,5 +1,5 @@
 """
-gchi — Global Climate Hazard Index
+gchi — Global Climate Health Index
 """
 import warnings
 
