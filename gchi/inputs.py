@@ -21,9 +21,7 @@ _DEFAULT_PERCENTILES = {
 
 def show_expected_ds_format():
     """
-    Prints info about the expected input dictionary format.
-
-    ds_dict keys should be standard CMIP6 shortnames, values should be xarray DataArrays.
+    prints info about the expected input dictionary format
     """
     variables = {
         "daily_max_surface_temperature": "tasmax",
@@ -84,7 +82,7 @@ def help():
 
 
 def _grids_match(da, target_grid):
-    """check if a DataArray already sits on the target grid -- if so, skip regridding"""
+    """check if a da already sits on the target grid. if so, skip regridding"""
     import numpy as np
     for dim in ['lat', 'lon']:
         if dim not in da.coords or dim not in target_grid.coords:
@@ -96,14 +94,16 @@ def _grids_match(da, target_grid):
     return True
 
 
-# ocean vars -- skip land masking for these
+# ocean vars. skip land masking for these
 _OCEAN_VARS = {"tos", "sos"}
 
-# vars that may have a vertical dimension -- extract surface before regridding
-# so we don't regrid the full column unnecessarily
+# vars that may have a vertical dimension
+# users should probably slice the surface level of these in advance
+# if these vars are detected with multiple vertical levels, a warning will trigger 
 _SURFACE_VARS = {"o3", "mmrbc", "mmrdust", "mmroa", "mmrso4", "mmrss"}
 
 # applied after regridding and land masking
+# by default we do not assess antarctic patterns
 _ANTARCTIC_LAT = -60
 
 
@@ -112,58 +112,37 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
                    mask_land=True, land_mask_file="default", land_mask_var="land_mask",
                    verbose=False):
     """
-    Chunk all DataArrays in ds_dict for efficient computation.
-    Time is kept as one contiguous chunk (required for quantile/groupby ops).
-    Spatial dimensions are chunked to spatial_chunk.
-    Always rechunks -- safe to call on numpy or already-dask inputs.
+    important prep function. prepares input data so gchi calculates efficiently and cleanly, leveraging dask where possible 
+    The data are likely to be pretty large (subdaily inputs mostly), so dask is almost essential. 
+    time is kept as one contiguous chunk (required for quantile/groupby ops)
+    spatial dimensions are chunked to spatial_chunk
 
     Steps applied in order:
-      - surface extraction for column vars (o3, mmr*) -- done before regrid
-         so only the surface level is regridded, not the full column
-      - regrid to target grid (skipped if grids match or regrid=False)
-      - land mask (skipped for ocean vars tos/sos, or if mask_land=False)
-      - drop antarctica (lat < -60)
-      - chunk + drop bounds
+      1. regrid to target grid (skipped if grids match or regrid=False)
+      2. land mask (skipped for ocean vars tos/sos, or if mask_land=False)
+      3. drop antarctica (lat < -60)
+      4. chunk + drop bounds
 
-    if a user skips prepare_inputs, surface extraction still happens as a
-    fallback inside the metric functions (o3, pm25) themselves.
-
-    Parameters
-    ----------
-    ds_dict : dict
-        dict of xr.DataArrays keyed by CMIP6 shortname
-    spatial_chunk : int or 'auto'
-        chunk size for spatial dimensions
-    model_grid_file : str, optional
-        path to target grid file for regridding. default 'default' downloads
+    More info 
+    spatial_chunk : integer or 'auto'. chunk size for spatial dimensions
+    model_grid_file: path to target grid file for regridding. default 'default' downloads
         and caches gchi's default 1x1 global target grid (from
         https://zenodo.org/records/19239161) the first time it's needed.
         pass None to skip regridding entirely regardless of `regrid`, or
         pass your own path to use a custom grid.
-    regrid : bool
-        set to False to skip regridding entirely. default True.
-    regrid_method : str
-        regridding method passed to xesmf (default 'bilinear')
-    mask_land : bool
-        apply a land mask to non-ocean variables. default True.
-        set to False to skip land masking entirely.
-    land_mask_file : str, optional
-        path to land mask file. the mask should be True over land (will be set to NaN).
+    regrid: boolean. set to False to skip regridding entirely. default True
+    regrid_method: regridding method passed to xesmf (default 'bilinear')
+    mask_land: boolean. apply a land mask to non-ocean variables. default True.
+        set to False to skip land masking entirely, although not recommended. 
+    land_mask_file: path to land mask file. the mask should be True over land (will be set to nan)
         default 'default' downloads and caches gchi's default land mask
         (from https://zenodo.org/records/19239161) the first time it's needed.
         pass None to skip land masking regardless of `mask_land`, or pass
-        your own path to use a custom mask.
-    land_mask_var : str
-        variable name in the land mask dataset (default 'land_mask')
-    verbose : bool
-        print progress messages for this run (default False). equivalent to
-        calling gchi.set_verbose(True) beforehand -- note this affects the
-        whole session's logging level, not just this call.
-
-    Returns
-    -------
-    dict of chunked xr.DataArrays
+        your own path to use a custom mask
+    land_mask_var: string. variable name in the land mask dataset (default 'land_mask')
+    verbose: prints updates (messages for this run)
     """
+
     import numpy as np
     set_verbose(verbose)
     xr.set_options(keep_attrs=True)
@@ -186,7 +165,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
     ds_dict_prepared = {}
     for key, da in ds_dict.items():
 
-        # surface extraction for column vars -- before regrid so we don't
+        # surface extraction for column vars before regrid so we don't
         #    regrid the full column. _get_surface is a no-op if no vertical dim.
         if key in _SURFACE_VARS:
             has_vert = any(d in da.dims for d in ["lev", "plev"])
@@ -196,7 +175,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
         # regridding
         if target_grid is not None:
             if _grids_match(da, target_grid):
-                logger.info(f"{key}: already on target grid -- skipping regrid")
+                logger.info(f"{key}: already on target grid . skipping regrid")
             else:
                 logger.info(f"{key}: regridding...")
                 da = _regrid_xr(da, target_grid, method=regrid_method, name=key)
@@ -220,7 +199,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
                         "or (3) set mask_land=False to skip land masking."
                     )
             else:
-                logger.warning("mask_land=True but no land_mask_file provided -- skipping land masking.")
+                logger.warning("mask_land=True but no land_mask_file provided . skipping land masking.")
 
 
         if land_mask is not None and key not in _OCEAN_VARS:
@@ -241,7 +220,7 @@ def prepare_inputs(ds_dict, spatial_chunk="auto",
 
         has_unit = any(k.lower() in ["unit", "units"] for k in da.attrs)
         if not has_unit:
-            logger.warning(f"'{key}' has no 'units' attribute -- units will be guessed. add units attr to avoid errors.")
+            logger.warning(f"'{key}' has no 'units' attribute . units will be guessed. add units attr to avoid errors.")
 
     logger.info("input preparation complete.")
     return ds_dict_prepared
@@ -266,36 +245,22 @@ def calculate_base_period_percentiles(
     Used by HWF, TNXp, PR1day, PR5day, SPI, SMSXp.
 
     Run prepare_inputs(ds_dict) before calling this for best performance.
-    All operations are dask-native -- no data loaded into memory until .compute().
+    All operations are dask-native so no data loaded into memory until .compute()
+    
+    Inputs (xr da)
+    tas, tasmax, tasmin, pr 
 
-    Parameters
-    ----------
-    tas : xr.DataArray, optional
-        Daily mean surface temperature. Any units (K or degC) -- converted to degC.
-    tasmax : xr.DataArray, optional
-        Daily maximum surface temperature. Any units -- converted to degC.
-    tasmin : xr.DataArray, optional
-        Daily minimum surface temperature. Any units -- converted to degC.
-    pr : xr.DataArray, optional
-        Daily precipitation. Any units -- converted to mm day-1.
-    base_years : tuple of (int, int)
-        Start and end years inclusive. Default: (1980, 2014).
-    tas_calday_percentiles : list of float
-        Calendar-day percentile(s) for tas. Default: [90].
-    pr_percentiles : list of float
-        All-year wet-day percentile(s) for pr. Default: [90, 95, 98, 99.5].
-    tasmin_percentiles : list of float
-        All-year cold-tail percentile(s) for tasmin. Default: [10, 5, 2, 0.5].
-    pr5day_percentiles : list of float
-        Percentile(s) of all 5-day rolling sums (wet windows). Default: [90, 95, 98, 99.5].
-    wet_day_threshold : float
-        Minimum pr (mm day-1) to count as a wet day. Default: 1.0.
+    Args
+    base_years: tuple (int, int) Start and end years inclusive. Default: (1980, 2014)
+    tas_calday_percentiles: Calendar-day percentile(s) for tas. Default: [90]
+    pr_percentiles: list of float. All-year wet-day percentile(s) for pr. Default: [90, 95, 98, 99.5]
+    tasmin_percentiles: list of float. All-year cold-tail percentile(s) for tasmin. Default: [10, 5, 2, 0.5].
+    pr5day_percentiles: list of float. Percentile(s) of all 5-day rolling sums (wet windows). Default: [90, 95, 98, 99.5].
+    wet_day_threshold: float. Minimum pr (mm day-1) to count as a wet day. Default: 1.0.
 
     Returns
-    -------
-    base_dict : dict
-        Keys include 'tas', 'tasmax', 't{p}p_calday', 'tasmin_{p}p', 'pr_{p}p', 'rx5day_{p}p'.
-        All DataArrays carry attrs: software_version, base_period_start/end, percentile, units.
+    base_dict: dict. Keys include 'tas', 'tasmax', 't{p}p_calday', 'tasmin_{p}p', 'pr_{p}p', 'rx5day_{p}p'. 
+    all DataArrays carry attrs: software_version, base_period_start/end, percentile, units
     """
     xr.set_options(keep_attrs=True)
     base_start, base_end = int(base_years[0]), int(base_years[1])
@@ -355,7 +320,7 @@ def calculate_base_period_percentiles(
 
     base_dict = {}
 
-    # tas -- calendar-day percentiles
+    # tas calendar-day percentiles
     if tas is not None:
         logger.info("calculating tas base period percentiles...")
         tas_base, actual_start, actual_end = _slice_to_base(
@@ -374,7 +339,7 @@ def calculate_base_period_percentiles(
             notes_fmt=lambda p: f"calendar-day {p}th percentile of tas (degC). one value per dayofyear per grid cell.",
         ))
 
-    # tasmax -- stored for HWF (no percentile calc needed, just a slice)
+    # tasmax stored for HWF (no percentile calc needed, just a slice)
     if tasmax is not None:
         logger.info("converting tasmax to degC for base period storage...")
         tasmax_base, *_ = _slice_to_base(
@@ -382,7 +347,7 @@ def calculate_base_period_percentiles(
         )
         base_dict["tasmax"] = tasmax_base
 
-    # tasmin -- all-year cold-tail percentiles
+    # tasmin all-year cold-tail percentiles
     if tasmin is not None:
         logger.info("calculating tasmin base period percentiles...")
         tasmin_base, actual_start, actual_end = _slice_to_base(
@@ -400,7 +365,7 @@ def calculate_base_period_percentiles(
             notes_fmt=lambda p: f"all-year {p}th percentile of tasmin (degC). one value per grid cell.",
         ))
 
-    # pr -- wet-day percentiles + rx5day percentiles
+    # pr. wet-day percentiles + rx5day percentiles
     if pr is not None:
         logger.info("calculating pr base period percentiles...")
         pr_base, actual_start, actual_end = _slice_to_base(
@@ -410,7 +375,7 @@ def calculate_base_period_percentiles(
         base_dict["pr"] = pr_base  # stored for SPI/SPEI
 
         # pr percentile on ALL days (including dry days as 0)
-        # clean and consistent -- no wet day fraction needed for level assignment
+        # clean and consistent no wet day fraction needed for level assignment
         q_vals = [p / 100.0 for p in pr_percentiles]
         prp_all = pr_base.quantile(q_vals, dim="time", skipna=True)
         base_dict.update(_unpack_quantiles(
@@ -423,14 +388,14 @@ def calculate_base_period_percentiles(
             ),
         ))
 
-        # pr5day -- percentile of all 5-day rolling sums on wet windows
+        # pr5day percentile of all 5-day rolling sums on wet windows
         # consistent with PR1day: uses (100-p)/100 fraction for level assignment
         logger.info("calculating pr5day base period percentiles...")
         pr5day_rolling = (
             pr_base
             .rolling(time=5, min_periods=5)
             .sum()
-            .where(lambda x: x > 5)  # wet windows only -- approx 1mm/day avg over 5 days
+            .where(lambda x: x > 5)  # wet windows only approx 1mm/day avg over 5 days
         )
 
         q_vals = [p / 100.0 for p in pr5day_percentiles]

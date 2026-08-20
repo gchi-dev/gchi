@@ -1,8 +1,8 @@
 """
 drought metrics: DSD, SPI, SMSXp
 
-all work well chunked spatially.
-SPI uses apply_ufunc with dask="parallelized".
+note. all work well chunked spatiallyßßß
+SPI uses apply_ufunc with dask="parallelized"
 """
 
 import numpy as np
@@ -17,11 +17,6 @@ from .thresholds import severity_thresholds as _default_thresholds
 from ._log import logger
 
 def _extract_da(val, var_name):
-    """
-    Extract a DataArray from either a DataArray or Dataset.
-    Supports passing a raw dict of Datasets as base_dict (e.g. esm2_base_dict)
-    or the output of calculate_base_period_percentiles() which has DataArrays.
-    """
     if isinstance(val, xr.DataArray):
         return val
     elif isinstance(val, xr.Dataset):
@@ -32,8 +27,8 @@ def _extract_da(val, var_name):
 
 def dsd_values(ds_dict):
     """
-    Daily precipitation (mm day-1) — for DSD calculation.
-    Exposed so users can inspect the raw precip field if needed.
+    Daily precipitation (mm day-1) — for DSD calculation
+    Exposed so users can inspect the raw precip field if needed
     """
     return _check_and_convert_units(da=ds_dict['pr'], input_var="pr", conv_type="mm day-1")
 
@@ -41,9 +36,9 @@ def dsd_values(ds_dict):
 def DSD(ds_dict, severity_thresholds=None, min_threshold=10):
     """
     Dry Spell Days — fraction of year that falls within dry spells of
-    at least min_threshold days (default 10).
+    at least min_threshold days (default 10)
 
-    Uses a rolling window approach: counts all days that are part of a qualifying dry spell.
+    Uses a rolling window approach: counts all days that are part of a qualifying dry spell
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["DSD"]
@@ -69,19 +64,11 @@ def DSD(ds_dict, severity_thresholds=None, min_threshold=10):
 
 def SPI(ds_dict, base_dict, timescale=6, severity_thresholds=None):
     """
-    Standardized Precipitation Index.
-    Fits a gamma distribution per calendar month to the base period and applies it to the study period.
-    Follows McKee et al. (1993) / climate_indices methodology.
-    Default thresholds from USDM drought classification.
- 
-    Parameters
-    ----------
-    base_dict : dict
-        output from calculate_base_period_percentiles() — needs 'pr'
-    ds_dict : dict
-        study period data — needs 'pr'
-    timescale : int
-        accumulation timescale in months (default 6)
+    Standardized Precipitation Index (SPI)
+    Fits a gamma distribution per calendar month to the base period and applies it to the study period
+    Follows McKee et al. (1993) / climate_indices methodology
+        McKee, T., Doesken, N., & Kleist, J. (1993). The Relationship of Drought Frequency and Duration of Time Scales. Eighth Conference on Applied Climatology, 17–22.
+    Default thresholds from USDM drought classification (https://droughtmonitor.unl.edu/About/AbouttheData/DroughtClassification.aspx)
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["SPI"]

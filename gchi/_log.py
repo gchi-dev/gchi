@@ -1,23 +1,12 @@
 """
-_log.py -- shared logger for the whole package.
+_log.py shared logger for the package   
 
-standard library logging, standard library conventions:
-  - progress messages ("calculating FWI...", "processing year 2020...")  -> logger.info()
-  - fallback/assumption notices ("no mask file provided", "guessed units") -> logger.warning()
-  - real errors (caught exceptions in calculate_all)                     -> logger.error()
+default level is warning, so progress messages are silent unless turned on,
+while anything that affects results (a fallback, a skipped metric, an
+error) always prints. 
 
-default level is WARNING, so progress messages are silent unless turned on,
-while anything that affects your results (a fallback, a skipped metric, an
-error) always prints. turn progress messages on with:
-
-    gchi.set_verbose(True)
-
+turn progress messages on with: gchi.set_verbose(True)
 or pass verbose=True directly to calculate_all() / prepare_inputs().
-
-a NullHandler is attached by default (library convention -- doesn't print
-anything on its own). the first time set_verbose() is called, a simple
-StreamHandler is attached so INFO messages actually show up somewhere
-without requiring the user to configure logging themselves.
 """
 
 import logging

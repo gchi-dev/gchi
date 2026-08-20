@@ -2,7 +2,7 @@
 extreme weather metrics: PRXmm, PR1day, PR5day
 
 all work well chunked spatially.
-PR1day and PR5day use spatially varying thresholds from base_dict.
+PR1day and PR5day use spatially varying thresholds from base_dict
 """
 
 import numpy as np
@@ -24,8 +24,8 @@ def pr_values(ds_dict):
 
 def PRXmm(ds_dict, severity_thresholds=None):
     """
-    Fraction of year where daily precipitation > X mm.
-    Default thresholds: 20, 30, 40, 50 mm.
+    Fraction of year where daily precipitation > X mm
+    Default thresholds: 20, 30, 40, 50 mm
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["PRXmm"]
@@ -38,16 +38,15 @@ def PRXmm(ds_dict, severity_thresholds=None):
 def PR1day(ds_dict, base_dict, percentile_thresholds=None):
     """
     Fraction of days per year where daily precipitation exceeds local percentile
-    thresholds derived from the base period distribution of all days -- at the
+    thresholds derived from the base period distribution of all days - at the
     90th, 95th, 98th, and 99.5th percentiles by default.
     Level N assigned if exceedance fraction > (100-p)/100 of all days:
-      level 1: > 10% of year. level 2: > 5%. level 3: > 2%. level 4: > 0.5%.
+    level 1: > 10% of year. level 2: > 5%. level 3: > 2%. level 4: > 0.5%
 
-    Parameters
-    ----------
+    
     percentile_thresholds : list of float, optional
         Percentile thresholds to use. Must match the percentiles used when
-        calculate_base_period_percentiles() was called. Default: [90, 95, 98, 99.5].
+        calculate_base_period_percentiles() was called. Default: [90, 95, 98, 99.5]
 
     base_dict needs 'pr_{p}p' keys from calculate_base_period_percentiles().
     """
@@ -55,11 +54,11 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
         percentile_thresholds = _default_thresholds["PR1day"]
     PR = pr_values(ds_dict).chunk({"lat": -1, "lon": -1})
     nanmask = _nan_mask(PR)
-    # get calendar steps before wet day masking -- needed for correct denominator
+    # get calendar steps before wet day masking .needed for correct denominator
     steps_per_year = _get_tsteps(PR)
     PR = PR.where(PR > 1)  # wet day condition
 
-    # sort descending (99.5th first) -- level 1 = most extreme (99.5th pct)
+    # sort descending (99.5th first) .level 1 = most extreme (99.5th pct)
     # level 4 = least extreme but still above normal (90th pct)
     pr_base_percentile_keys = sorted(
         [k for k in base_dict.keys() if k.startswith('pr_') and k.endswith('p')],
@@ -68,7 +67,7 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
     )
 
     if not pr_base_percentile_keys:
-        logger.warning("cannot calculate PR1day -- no pr percentile keys found in base_dict. skipping...")
+        logger.warning("cannot calculate PR1day .no pr percentile keys found in base_dict. skipping...")
         return None
 
     pr_base_percentile_vals = [
@@ -79,7 +78,7 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
     # validate that user thresholds match what was computed in base_dict
     if sorted(percentile_thresholds) != sorted(pr_base_percentile_vals):
         logger.warning(
-            f"cannot calculate PR1day -- percentile_thresholds {sorted(percentile_thresholds)} "
+            f"cannot calculate PR1day .percentile_thresholds {sorted(percentile_thresholds)} "
             f"don't match base_dict percentiles {sorted(pr_base_percentile_vals)}. "
             f"rerun calculate_base_period_percentiles() with matching percentiles, or "
             f"don't pass percentile_thresholds to use the base_dict defaults. skipping..."
@@ -97,8 +96,8 @@ def PR1day(ds_dict, base_dict, percentile_thresholds=None):
     ]
 
     # frac_thresholds match level order:
-    # level 1 (99.5th pct): > 0.5% of year  -- rare but very extreme
-    # level 4 (90th pct):   > 10% of year   -- more common, less extreme
+    # level 1 (99.5th pct): > 0.5% of year  .rare but very extreme
+    # level 4 (90th pct):   > 10% of year   .more common, less extreme
     frac_thresholds = [(100 - p) / 100 for p in pr_base_percentile_vals]
 
     da_list = []
@@ -155,13 +154,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     Level assignment identical to PR1day: level N requires > (100-p)/100 fraction of year.
     e.g. level 1 (90th pct): > 10% of year. level 4 (99.5th pct): > 0.5% of year.
 
-    Parameters
-    ----------
-    percentile_thresholds : list of float, optional
-        Percentile thresholds to use. Must match the percentiles used when
-        calculate_base_period_percentiles() was called. Default: [90, 95, 98, 99.5].
-
-    base_dict needs 'pr5day_{p}p' keys from calculate_base_period_percentiles().
+    Same parameters as PR1day but for 5-day sum. 
     """
     if percentile_thresholds is None:
         percentile_thresholds = _default_thresholds["PR5day"]
@@ -169,7 +162,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     steps_per_year = _get_tsteps(PR)
     nanmask = _nan_mask(PR)
 
-    # sort descending (99.5th first) -- level 1 = most extreme
+    # sort descending (99.5th first) .level 1 = most extreme
     pr5day_base_percentile_keys = sorted(
         [k for k in base_dict.keys() if k.startswith('pr5day_') and k.endswith('p')],
         key=lambda k: float(k.replace('pr5day_', '').replace('pt', '.').replace('p', '')),
@@ -177,7 +170,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
     )
 
     if not pr5day_base_percentile_keys:
-        logger.warning("cannot calculate PR5day -- no pr5day percentile keys found in base_dict. skipping...")
+        logger.warning("cannot calculate PR5day .no pr5day percentile keys found in base_dict. skipping...")
         return None
 
     pr5day_base_percentile_vals = [
@@ -187,7 +180,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
 
     if sorted(percentile_thresholds) != sorted(pr5day_base_percentile_vals):
         logger.warning(
-            f"cannot calculate PR5day -- percentile_thresholds {sorted(percentile_thresholds)} "
+            f"cannot calculate PR5day .percentile_thresholds {sorted(percentile_thresholds)} "
             f"don't match base_dict percentiles {sorted(pr5day_base_percentile_vals)}. "
             f"rerun calculate_base_period_percentiles() with matching percentiles, or "
             f"don't pass percentile_thresholds to use the base_dict defaults. skipping..."
@@ -205,7 +198,7 @@ def PR5day(ds_dict, base_dict, percentile_thresholds=None):
 
     window = 5
     half_window = window // 2
-    # only count wet windows -- consistent with how pr5day percentiles were computed
+    # only count wet windows .consistent with how pr5day percentiles were computed
     rolling_sum = PR.rolling(time=window, center=True).sum().where(lambda x: x > 5)  # approx 1mm/day avg
 
     da_list = []

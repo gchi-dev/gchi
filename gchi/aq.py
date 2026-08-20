@@ -3,11 +3,12 @@ air quality metrics: O3, PM2pt5
 
 both work well chunked spatially.
 
-input data can be daily or monthly -- resolution is detected automatically.
+input data can be daily or monthly 
+resolution is detected automatically (verify if need be)
 daily data is averaged to monthly before exceedance counting. threshold set
 (O3day vs O3mon, PM2pt5day vs PM2pt5mon) is chosen based on the raw input
-resolution, since daily data implies a different exposure context than monthly.
-users can always override with a custom severity_thresholds list.
+resolution since daily data implies a different exposure context than monthly.
+users can always override with a custom severity_thresholds list
 """
 
 import xarray as xr
@@ -22,8 +23,8 @@ from ._log import logger
 
 def _detect_daily(da):
     """
-    Returns True if the DataArray looks like daily data (> 15 time steps per year).
-    Called before resampling so we can pick the right threshold set.
+    hacky way to see if inputs daily or not. 
+    for now, > 15 time steps per year is guessed as daily data 
     """
     steps_per_year = _get_tsteps(da)
     try:
@@ -34,10 +35,9 @@ def _detect_daily(da):
 
 def o3_values(ds_dict):
     """
-    Surface ozone concentration (ug m-3).
-    Converts from CMIP6 mol mol-1 using air density from tas and ps.
+    surface ozone concentration (ug m-3)
+    Converts from CMIP6 mol mol-1 using air density from tas and ps
     Surface level is extracted here as a fallback if prepare_inputs was not run
-    (prepare_inputs handles this more efficiently before regridding).
     """
     O3 = ds_dict["o3"]
 
@@ -93,27 +93,27 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_
     """
     Surface ozone exceedance levels.
     Converts from CMIP6 mol mol-1 to ug m-3, scales to MDA8, then counts
-    annual exceedances. Always resamples to monthly internally.
+    annual exceedances. Always resamples to monthly internally
 
     Input resolution (daily or monthly) is detected automatically and used to
-    pick the appropriate default threshold set (O3day vs O3mon). Override with
-    a custom severity_thresholds list if needed.
+    pick the appropriate default threshold set (O3day vs O3mon) 
+    
+    you can override with a custom severity_thresholds list if needed
 
-    Note: input should be surface level only. use prepare_inputs or pass
-    surface level directly -- gchi does not slice levels inside this function.
+    Important!! input should be surface level only. pass
+    surface level directly 
+    
+    gchi does not currently slice levels inside this function
 
-    Parameters
-    ----------
-    ds_dict : dict
-    severity_thresholds : list, optional
+    severity_thresholds:
         override default thresholds. if None, picked automatically based on
         detected input resolution (O3day for daily input, O3mon for monthly).
-    mda8_scale_file : str, optional
+    mda8_scale_file : optional
         path to MDA8 scale factor file. default 'default' downloads and caches
         gchi's default scale factor file (https://zenodo.org/records/19239161)
         the first time it's needed. pass None to skip MDA8 scaling and return
-        raw monthly O3.
-    mda8_scale_varname : str
+        raw monthly O3
+    mda8_scale_varname
         variable name in the scale factor file (default 'o3')
     """
     O3_val = o3_values(ds_dict)
@@ -124,12 +124,12 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_
         from ._remote_data import get_default_data_file
         mda8_scale_file = get_default_data_file("mda8_scale")
 
-    # detect resolution before collapsing -- determines which threshold set to use
+    # detect resolution before collapsing - determines which threshold set to use
     is_daily = _detect_daily(O3_val)
     if is_daily:
-        logger.info("O3: detected daily input -- using O3day thresholds")
+        logger.info("O3: detected daily input - using O3day thresholds")
     else:
-        logger.info("O3: detected monthly input -- using O3mon thresholds")
+        logger.info("O3: detected monthly input - using O3mon thresholds")
         # always collapse to monthly
         O3_val = O3_val.resample(time="1ME").mean().load()
 
@@ -138,7 +138,7 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_
 
 
     if mda8_scale_file is None:
-        logger.warning("mda8_scale_file not provided -- skipping MDA8 scaling. using raw monthly O3.")
+        logger.warning("mda8_scale_file not provided - skipping MDA8 scaling. using raw monthly O3.")
     else:
         mda8_scale_factor = xr.open_dataset(mda8_scale_file)[mda8_scale_varname]
         O3_val = O3_val.groupby("time.month") / mda8_scale_factor
@@ -152,8 +152,8 @@ def O3(ds_dict, severity_thresholds=None, mda8_scale_file="default", mda8_scale_
 
 def pm25_values(ds_dict):
     """
-    PM2.5 concentration (ug m-3) from CMIP6 aerosol mass fraction variables.
-    Surface level extracted here as fallback if prepare_inputs was not run.
+    PM2.5 concentration (ug m-3) from CMIP6 aerosol mass fraction variables
+    Like O3, pass ONLY surface level 
     """
     BC = ds_dict["mmrbc"]
     OA = ds_dict["mmroa"]
@@ -203,18 +203,8 @@ def pm25_values(ds_dict):
 def PM2pt5(ds_dict, severity_thresholds=None):
     """
     PM2.5 exceedance levels. Always resamples to monthly internally.
-    Call pm25_values() to get raw PM2.5 concentration without level assignment.
 
-    Input resolution (daily or monthly) is detected automatically and used to
-    pick the appropriate default threshold set (PM2pt5day vs PM2pt5mon).
-    Override with a custom severity_thresholds list if needed.
-
-    Parameters
-    ----------
-    ds_dict : dict
-    severity_thresholds : list, optional
-        override default thresholds. if None, picked automatically based on
-        detected input resolution.
+    Same process as O3
     """
     pm2pt5 = pm25_values(ds_dict)
 

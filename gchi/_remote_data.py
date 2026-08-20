@@ -1,13 +1,9 @@
 """
 download and cache default reference data files (masks,
-target grid, scale factors) from zenodo.
+target grid, scale factors) from zenodo (https://zenodo.org/records/19239161)
+
 inspired by the cartopy  natural earth shapefile workflow (https://foundations.projectpythia.org/core/cartopy/cartopy/)
-
-source: GCHI v1 Supporting Datasets, https://zenodo.org/records/19239161
-        (Elling, M. - CC BY 4.0)
-
-files are downloaded once into the local cache directory and reused after
-that 
+files are downloaded once into the local cache directory and reused after that 
 
 never re-downloaded unless the cache is cleared or the checksum
 doesn't match. users can always bypass this entirely by passing their own
@@ -54,14 +50,11 @@ def _md5(path):
 def get_default_data_file(name, base_url=None):
     """
     return a local path to the default reference file for `name`, downloading
-    and caching it the first time it's needed. subsequent calls reuse the
-    cached copy.
-
-    Params
-    name : str
-        one of the keys in _DATA_FILES (e.g. "fire_mask", "vbd_mask")
-    base_url : str, optional
-        override the zenodo base url (mainly for testing against a mock host)
+    and caching it the first time it's needed
+    subsequent calls reuse the cached copy.
+    
+    one of the keys in _DATA_FILES (e.g. "fire_mask", "vbd_mask")
+    override the zenodo base url (mainly for testing against a mock host)
     """
     if name not in _DATA_FILES:
         raise ValueError(f"no default data file registered for '{name}' - expected one of {list(_DATA_FILES)}")
