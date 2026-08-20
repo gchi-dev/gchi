@@ -1,18 +1,17 @@
 """
-composites.py -- categorical and composite severity averages across gchi metrics.
+categorical and composite severity averages across gchi metrics
 
 category_averages() collapses each category's member metrics (their
 {metric}_severity_level fields) into one severity field per category,
-via a weighted mean across metrics (equal weight by default).
+via a weighted mean across metrics (equal weight by default)
 
 composite_average() then collapses those category fields into a single
 overall severity field, via a weighted mean across categories (equal
-weight by default).
+weight by default)
 
-both operate purely over the metric/category dimension -- whatever other
-dims your results carry (time, lat, lon, model, ...) are left untouched.
-reduce over those yourself (e.g. .mean(["model", "time"])), before or
-after, depending on your workflow.
+Note. whatever other dims from your results carry over (time, lat, lon, model, ...) 
+You may need to reduce over those yourself (e.g. .mean(["model", "time"])), before or
+after, depending on your workflow
 """
 
 import xarray as xr
@@ -35,7 +34,7 @@ DEFAULT_CATEGORIES = {
 
 # metrics where a severity level of exactly 0 means "not applicable here"
 # rather than "no hazard" -- e.g. VbrS is only meaningful in coastal cells
-# and reports a technically-valid 0 everywhere else. treated as NaN
+# and reports a technically-valid 0 everywhere else. treated as  nan
 # (excluded from the average, not counted as a real 0) so it doesn't drag
 # down cells it was never meant to describe. pass zero_as_nan_metrics=set()
 # to disable this.
@@ -55,30 +54,15 @@ def _get_severity(results, metric):
 
 def category_averages(results, categories=None, metric_weights=None, zero_as_nan_metrics=None):
     """
-    Collapse each category's metrics into one severity field per category.
-
-    Parameters
-    ----------
-    results : dict-like {metric_name: xr.Dataset}
-        e.g. the output of calculate_all(), or any dict of metric result
-        Datasets each containing a '{metric}_severity_level' variable.
-    categories : dict {category_name: [metric_names]}, optional
-        defaults to DEFAULT_CATEGORIES.
-    metric_weights : dict {metric_name: weight}, optional
+    Collapse each category's metrics into one severity field per category
+    results: dict-like {metric_name: xr.Dataset}
+    categories: dict {category_name: [metric_names]}
+    metric_weights: dict {metric_name: weight}, optional
         weight for each metric within its category average. metrics not
-        listed default to 1 (equal weighting -- the default behavior).
-    zero_as_nan_metrics : set of str, optional
-        metrics where severity level 0 means "not applicable" and should
-        be excluded (as NaN) rather than counted as a real 0. defaults to
+        listed default to 1 
+    zero_as_nan_metrics: optional, metrics where severity level 0 means "not applicable" and should
+        be excluded (as  nan) rather than counted as a real 0. defaults to
         DEFAULT_ZERO_AS_NAN ({"VbrS"}). pass an empty set to disable.
-
-    Returns
-    -------
-    xr.Dataset
-        one variable per category (named as given in `categories`), each
-        the weighted mean of its member metrics' severity_level fields.
-        missing metrics are skipped; categories with zero available
-        metrics are omitted (with a warning).
     """
     categories = categories or DEFAULT_CATEGORIES
     metric_weights = metric_weights or {}
@@ -112,19 +96,8 @@ def category_averages(results, categories=None, metric_weights=None, zero_as_nan
 def composite_average(category_ds, category_weights=None):
     """
     Collapse a category_averages() Dataset into a single composite severity field.
-
-    Parameters
-    ----------
-    category_ds : xr.Dataset
-        output of category_averages() -- one variable per category.
+    category_ds : xr ds output of category_averages() one variable per category.
     category_weights : dict {category_name: weight}, optional
-        weight for each category. categories not listed default to 1
-        (equal weighting -- the default behavior).
-
-    Returns
-    -------
-    xr.DataArray
-        weighted mean across categories.
     """
     category_weights = category_weights or {}
     stacked = category_ds.to_array(dim="category")

@@ -20,8 +20,9 @@ def utci_cold_values(ds_dict, hum_var='both'):
 
 def UTCIcold(ds_dict, hum_var='both', severity_thresholds=None):
     """
-    UTCI cold stress exceedance levels (days below threshold).
-    Call utci_cold_values() to get raw UTCI without level assignment.
+    UTCI cold stress exceedance levels (days below threshold)
+    Call utci_cold_values() to get raw UTCI without level assignment
+    Same as heat stress UTCI procedure
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["UTCIcold"]

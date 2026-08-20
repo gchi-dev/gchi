@@ -1,6 +1,4 @@
-# =================
 # !! THRESHOLDS DICTIONARY !!
-# =================
 severity_thresholds = {
     "AT": [28, 32, 35, 40],  # °C
     "HI": [27, 32, 41, 54],  # °C
@@ -47,8 +45,8 @@ fwi_thresholds = {
     'L': [20.86, 32.19, 46.13, 61.99],
     'M': [5.43, 11.41, 21.83, 37.91],
     'N': [10.28, 20.44, 35.18, 54.96],
-    'O': [10.28, 20.44, 35.18, 54.96],  # copied from N (no thresholds in Kudlackova, most will be masked by fuel mask)
-    'P': [5.95, 12.61, 30.85, 62.0],    # copied from Q (no thresholds in Kudlackova, most will be masked by fuel mask)
+    'O': [10.28, 20.44, 35.18, 54.96], # copied from N (no thresholds in Kudlackova, most will be masked by fuel mask)
+    'P': [5.95, 12.61, 30.85, 62.0], # copied from Q (no thresholds in Kudlackova, most will be masked by fuel mask)
     'Q': [5.95, 12.61, 30.85, 62.0],
     'R': [6.57, 12.86, 23.64, 39.84],
 }

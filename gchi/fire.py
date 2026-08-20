@@ -27,7 +27,7 @@ def _fmi_values(ds_dict):
 
 def fi_values(ds_dict, fire_mask_file=None):
     """
-    Fire danger index values (Sharples et al. 2009).
+    Fire danger index values (Sharples et al. 2009)
     https://doi.org/10.1016/j.envsoft.2008.10.012
     """
 
@@ -51,16 +51,10 @@ def _load_fire_mask(fire_mask_file):
 
 def FI(ds_dict, severity_thresholds=None, fire_mask_file="default"):
     """
-    Fire danger index exceedance levels.
-    Call fi_values() to get raw FI without level assignment.
-
-    Parameters
-    ----------
-    fire_mask_file : str, optional
-        path to infrequent burning mask file. cells where burning is infrequent
+    fire_mask_file: path to infrequent burning mask file. cells where burning is infrequent
         are masked out before exceedance counting. default 'default' downloads
         and caches gchi's default mask (https://zenodo.org/records/19239161)
-        the first time it's needed. pass None to skip masking entirely.
+        the first time it's needed
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["FI"]
@@ -78,8 +72,8 @@ def FI(ds_dict, severity_thresholds=None, fire_mask_file="default"):
 
 def hdw_values(ds_dict, fire_mask_file=None):
     """
-    Hot-Dry-Windy index values (Srock et al. 2018).
-    https://doi.org/10.3390/atmos9070279
+    Hot-Dry-Windy index values (Srock et al. 2018)
+    https://research.fs.usda.gov/treesearch/59937
     """
     if fire_mask_file is not None:
         fwi_mask = xr.open_dataset(fire_mask_file).mask_infreq_burning
@@ -100,15 +94,8 @@ def hdw_values(ds_dict, fire_mask_file=None):
 def HDW(ds_dict, severity_thresholds=None, fire_mask_file="default"):
     """
     HDW exceedance levels.
-    Call hdw_values() to get raw HDW without level assignment.
-
-    Parameters
-    ----------
-    fire_mask_file : str, optional
-        path to infrequent burning mask file. cells where burning is infrequent
-        are masked out before exceedance counting. default 'default' downloads
-        and caches gchi's default mask (https://zenodo.org/records/19239161)
-        the first time it's needed. pass None to skip masking entirely.
+    
+    fire_mask_file: same as above
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["HDW"]
@@ -123,10 +110,7 @@ def HDW(ds_dict, severity_thresholds=None, fire_mask_file="default"):
     result = _assign_severity_level(HDW_levels)
     return _add_metric_metadata(result, "HDW", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year", notes=f"Srock et al. 2018 hot-dry-windy index. fire_mask_file={fire_mask_file}")
 
-
-# =================
 # Canadian FWI
-# =================
 # Based on Quilcaille et al., 2023 (https://doi.org/10.5194/essd-15-2153-2023)
 # FWI does NOT chunk well — uses a time-step loop, data is loaded automatically.
 # This is a known limitation; no chunking approach avoids this for sequential indices.
@@ -253,14 +237,13 @@ def _fwi_from_isi_bui(isi, bui):
 
 def fwi_values(ds_dict, use_hursmin=True, init_values=None, fwi_mask_file=None, spatial_chunk=20):
     """
-    Daily FWI index values.
-    FWI doesn't not work well with lazy loading/chunking, but loading a multi-decade dataset will blow up RAM. 
-    Processes one year at a time to manage memory. Pass full ds_dict with complete time range. 
-    init_values : dict, optional
-        intial values to branch day 1 from. can be overwritten. 
+    Daily FWI index values
+    FWI doesn't not work well with lazy loading/chunking, but loading a multi-decade dataset will blow up RAM
+    Processes one year at a time to manage memory. Pass full ds_dict with complete time range
+
+    init_values: intial values to branch day 1 from. can be overwritten. 
         initial values {'ffmc': 85, 'dmc': 6, 'dc': 15}
-    fwi_mask_file : str, optional
-        path to infrequent burning mask file
+    fwi_mask_file: path to infrequent burning mask file, optional. recommended to use default, i.e. do not pass an arg.
     """
     logger.info("calculating FWI...")
 
@@ -356,20 +339,13 @@ def FWI(ds_dict, use_hursmin=True, init_values=None,
     FWI does NOT work chunked — data is loaded automatically.
     Call fwi_values() to get raw daily FWI without level assignment.
 
-    Parameters
-    ----------
-    ds_dict : dict
-    use_hursmin : bool
-    init_values : dict, optional
-    fwi_mask_file : str, optional
-        path to infrequent burning mask. default 'default' downloads and
-        caches gchi's default mask (https://zenodo.org/records/19239161) the
-        first time it's needed. pass None to skip masking entirely.
-    environmental_zone_file : str, optional
-        path to environmental zone file (required for spatially-varying
+    use_hursmin: bool
+    init_values: dict, optional
+    fwi_mask_file: same as other indices above
+    environmental_zone_file : path to environmental zone file (required for spatially-varying
         thresholds). default 'default' downloads and caches gchi's default
         GEnS zone file (https://zenodo.org/records/19239161) the first time
-        it's needed. pass None to return raw FWI without level assignment.
+        it's needed. pass None to return raw FWI without level assignment. Recommended to use default (do not pass arg; handled automatically)
     """
     if fwi_mask_file == "default":
         from ._remote_data import get_default_data_file

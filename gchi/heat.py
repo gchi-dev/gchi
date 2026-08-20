@@ -18,8 +18,8 @@ from ._log import logger
 
 def _wbt_values(ds_dict):
     """
-    WBT calculation via NEWT (Rogers & Warren 2024).
-    Faster and more accurate than Davies-Jones 2008 & Stull 2011.
+    WBT calculation via NEWT (Rogers & Warren 2024)
+    Faster and more accurate than Davies-Jones 2008 & Stull 2011
     https://rmets.onlinelibrary.wiley.com/doi/10.1002/qj.4866
 
     Returns Twp in °C
@@ -55,7 +55,7 @@ def _wbt_values(ds_dict):
 def _scale_windspeed(va, h):
     """
     Scale wind speed from 10m to height h.
-    From Bröde et al. (2012) / thermofeel.
+    following Bröde et al. (2012) https://doi.org/10.1007/s00484-011-0454-1 / thermofeel https://thermofeel.readthedocs.io/en/latest/
     """
     c = 1 / np.log10(10 / 0.01)
     return va * np.log10(h / 0.01) * c
@@ -63,8 +63,8 @@ def _scale_windspeed(va, h):
 
 def _cos_solar_zenith_angle_daily(time, lat):
     """
-    Daytime-mean cosine of solar zenith angle, integrated over daylight hours.
-    Based on Di Napoli et al. 2020 eq. 12
+    Daytime-mean cosine of solar zenith angle, integrated over daylight hours
+    Based on Di Napoli et al. 2020 eq. 12 https://doi.org/10.1007/s00484-020-01900-5
     """
     times = pd.DatetimeIndex(time.values)
     JD = xr.DataArray(times.dayofyear.values, dims=['time'], coords={'time': time})
@@ -94,10 +94,14 @@ def _cos_solar_zenith_angle_daily(time, lat):
 
 def _calculate_mrt(ds_dict):
     """
-    Mean Radiant Temperature (MRT) in K.
-    Adapted from ECMWF thermofeel / Di Napoli et al. 2020.
+    note. THIS FUNCTION IS A BETA VERSION AND OUTPUTS SHOULD BE EXAMINED IN DETAIL
+    Mean Radiant Temperature (MRT) in K
+    Adapted from ECMWF thermofeel https://thermofeel.readthedocs.io/en/latest / Di Napoli et al. 2020 https://doi.org/10.1007/s00484-020-01900-5
     Required variables: rsdsdiff, rsus, rlus, rsdscs, rsdscsdiff
     """
+
+    logger.warning(f"Mean radiant temperature: functionality has not yet been extensively tested. Please evaluate outputs carefully.")
+
     to_radians = np.pi / 180
 
     dsrp = ds_dict['rsdscs'] - ds_dict['rsdscsdiff']
@@ -123,8 +127,8 @@ def _calculate_mrt(ds_dict):
 
 def _calculate_bgt(ds_dict, mrt):
     """
-    Globe temperature (K).
-    From Guo et al. 2018 / thermofeel.
+    Globe temperature (K)
+    https://thermofeel.readthedocs.io/en/latest
     """
     t2_k = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="K")
     va = _check_and_convert_units(da=ds_dict['sfcWind'], input_var="sfcWind", conv_type="m s-1")
@@ -150,8 +154,8 @@ def _has_mrt_vars(ds_dict):
 
 def _sat_vapor_pressure_its90(ta_celsius):
     """
-    Saturation vapor pressure (hPa) via Hardy 1998 / ITS-90.
-    Used in UTCI. Translated from Bröde Fortran 2009.
+    Saturation vapor pressure (hPa) 
+    Used in UTCI & translated from Bröde Fortran 2009 https://doi.org/10.1007/s00484-011-0454-1
     """
     tk = ta_celsius + 273.15
     g = np.array([-2.8365744e3, -6.028076559e3, 1.954263612e1, -2.737830188e-2,
@@ -165,7 +169,8 @@ def _sat_vapor_pressure_its90(ta_celsius):
 def _utci_polynomial(Ta, va, D_Tmrt, Pa):
     """
     6th order polynomial approximation for UTCI.
-    Translated from Bröde Fortran 2009.
+    Translated from Bröde Fortran 2009
+    https://doi.org/10.1007/s00484-011-0454-1
     """
     return (Ta +
         6.07562052e-01 +
@@ -382,10 +387,10 @@ def _utci_polynomial(Ta, va, D_Tmrt, Pa):
 
 def _utci_values(ds_dict, hum_var='both', hotorcold='hot'):
     """
-    Calculate UTCI index values (°C) — no exceedance or level assignment.
+    Calculate UTCI index values (°C)
 
     adapted from thermofeel library 
-    #Brimicombe, C., Di Napoli, C., Quintino, T., Pappenberger, F., Cornforth, R., & Cloke, H. L. (2021). thermofeel: a python thermal comfort indices library https://doi.org/10.21957/mp6v-fd16
+    # thermofeel https://doi.org/10.21957/mp6v-fd16
     """
     tas_var = "tasmax" if hotorcold.lower() == "hot" else "tasmin"
 
@@ -427,14 +432,9 @@ def _utci_values(ds_dict, hum_var='both', hotorcold='hot'):
     return UTCI.where(valid)
 
 
-# =================
-# public metric functions
-# each has a _values() variant that returns the raw metric without level assignment
-# =================
-
 def at_values(ds_dict):
     """
-    Apparent temperature (°C) — 'feels like' temperature.
+    Apparent temperature (°C) 
     Combines air temp, vapor pressure. From Zhao et al. 2015.
     """
     TX = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
@@ -448,8 +448,8 @@ def at_values(ds_dict):
 
 def AT(ds_dict, severity_thresholds=None):
     """
-    Apparent temperature exceedance levels.
-    Calls at_values() then computes annual exceedance fraction and severity levels.
+    Apparent temperature exceedance levels
+    Zhao et al. 2015 https://doi.org/10.1088/1748-9326/10/8/084013
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["AT"]
@@ -461,7 +461,7 @@ def AT(ds_dict, severity_thresholds=None):
 
 def hi_values(ds_dict):
     """
-    NOAA heat index (°C).
+    NOAA heat index (°C)
     https://www.wpc.ncep.noaa.gov/html/heatindex.shtml
     """
     TX = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="F")
@@ -512,7 +512,7 @@ def HI(ds_dict, severity_thresholds=None):
 
 def hu_values(ds_dict):
     """
-    Humidex (°C) — Canadian humidity index.
+    Humidex (°C)
     https://publications.gc.ca/site/eng/9.865813/publication.html
     """
     TX = _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
@@ -526,7 +526,7 @@ def hu_values(ds_dict):
 
 
 def Hu(ds_dict, severity_thresholds=None):
-    """Humidex exceedance levels."""
+    """Humidex exceedance levels"""
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["Hu"]
     Hu_val = hu_values(ds_dict)
@@ -537,8 +537,7 @@ def Hu(ds_dict, severity_thresholds=None):
 
 def WBT(ds_dict, severity_thresholds=None, Twb=None):
     """
-    Wet Bulb Temperature exceedance levels via NEWT (Rogers & Warren 2024).
-    Call wbt_values() to get raw WBT without level assignment.
+    Wet Bulb Temperature exceedance levels via NEWT (Rogers & Warren 2024; see link above)
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["WBT"]
@@ -550,15 +549,15 @@ def WBT(ds_dict, severity_thresholds=None, Twb=None):
 
 
 def wbt_values(ds_dict):
-    """Raw WBT values (°C). Wrapper around internal _wbt_values."""
+    """Raw WBT wrapper around internal _wbt_values."""
     return _wbt_values(ds_dict)
 
 
 def wbgt_values(ds_dict, Twb=None):
     """
-    WBGT (°C).
-    Default: Brimicombe et al. 2023 approach using NEWT for WBT.
-    Fallback: Schwingshackl et al. 2021 approximation if MRT vars not available.
+    WBGT (°C)
+    Default: Brimicombe et al. 2023 approach using NEWT for WBT
+    Fallback: Schwingshackl et al. 2021 approximation if MRT vars not available
     """
     if Twb is None:
         Twb = _wbt_values(ds_dict)
@@ -585,14 +584,14 @@ def WBGT(ds_dict, severity_thresholds=None, Twb=None):
 
 
 def utci_hot_values(ds_dict, hum_var='both'):
-    """Raw UTCIhot values (°C)."""
+    """Raw UTCIhot values (°C)"""
     return _utci_values(ds_dict, hum_var=hum_var, hotorcold='hot')
 
 
 def UTCIhot(ds_dict, hum_var='both', severity_thresholds=None):
     """
-    UTCI heat stress exceedance levels.
-    Call utci_hot_values() to get raw UTCI without level assignment.
+    UTCI heat stress exceedance levels
+    Call utci_hot_values() to get raw UTCI without level assignment
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["UTCIhot"]
@@ -605,25 +604,18 @@ def UTCIhot(ds_dict, hum_var='both', severity_thresholds=None):
 def HWF(ds_dict, base_dict, percentile_base=90,
         severity_thresholds=None, hwd_threshold=3, detrend=True):
     """
-    Heatwave Frequency — fraction of year where days are part of a heatwave.
-    A heatwave is >= hwd_threshold consecutive days where:
+    Heatwave Frequency — fraction of year where days are part of a heatwave
+    A heatwave is >= hwd_threshold consecutive days where...
         - daily mean T > calendar-day Xth percentile (90th default)
         - daily mean T > base period annual mean
 
-    Parameters
-    ----------
-    ds_dict : dict
-    base_dict : dict
-        Output from calculate_base_period_percentiles() — needs 'tas' and 't{percentile_base}p_calday'.
-    percentile_base : int
-        Percentile threshold (default 90). Must match a key in base_dict.
-    severity_thresholds : list, optional
-    hwd_threshold : int
-        Minimum consecutive days for a heatwave (default 3).
-    detrend : bool
-        If True, remove linear warming trend before heatwave detection.
-        Useful for future projections — prevents long-term warming from inflating counts.
-        Warn users against detrending if data span is very short.
+    base_dict: from calculate_base_period_percentiles(). needs 'tas' and 't{percentile_base}p_calday'.
+    percentile_base: integer. percentile threshold (default 90). Must match a key in base_dict
+    severity_thresholds: Option to override default
+    hwd_threshold: minimum consecutive days for a heatwave (default 3).
+    detrend: If True (default), remove linear warming trend before heatwave detection
+        Useful for future projections — prevents long-term warming from inflating counts
+        if data span is very short, probably do not detrend
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["HWF"]
@@ -672,14 +664,13 @@ def HWF(ds_dict, base_dict, percentile_base=90,
 
 
 def txc_values(ds_dict):
-    """Raw daily max temperature values (°C) — for TXC exceedance."""
+    """Raw daily max temperature values for TXC"""
     return _check_and_convert_units(da=ds_dict['tasmax'], input_var="tasmax", conv_type="C")
 
 
 def TXC(ds_dict, severity_thresholds=None):
     """
-    Days exceeding absolute temperature thresholds (30, 35, 40, 45°C default).
-    General 'hot day' metric.
+    Days exceeding absolute temperature thresholds 
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["TXC"]
@@ -690,14 +681,13 @@ def TXC(ds_dict, severity_thresholds=None):
 
 
 def tr_values(ds_dict):
-    """Raw daily min temperature values (°C) — for tropical nights."""
+    """Raw daily min temperature values for TR"""
     return _check_and_convert_units(da=ds_dict['tasmin'], input_var="tasmin", conv_type="C")
 
 
 def TR(ds_dict, TR_thresh=20, severity_thresholds=None):
     """
-    Tropical nights — fraction of year where daily min T > TR_thresh (20°C default).
-    Associated with increased heat mortality.
+    Tropical nights. fraction of year where daily min T > TR_thresh (20°C default)
     """
     if severity_thresholds is None:
         severity_thresholds = _default_thresholds["TR"]

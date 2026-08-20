@@ -1,7 +1,7 @@
 """
-calculate_all — runs every metric, skipping those with missing inputs or errors
+calculate_all runs every metric, skipping those with missing inputs or errors
 
-usage:
+example...
     results = gchi.calculate_all(ds_dict, base_dict)
 
     # optional file paths for metrics that need external files
@@ -13,10 +13,12 @@ usage:
         mda8_scale_file="path/to/mda8_scale.nc",
     )
 
-returns a GCHIResults object -- behaves like a normal dict of {metric_name: xr.Dataset}
-for all metrics that ran successfully, but also remembers which metrics were skipped
+returns a GCHIResults object, which is a dict of {metric_name: xr ds}
+
+remembers which metrics were skipped
+
 (missing inputs) or failed (error). call results.summary() any time afterwards to
-print/reprint that -- you don't have to catch it off the initial printout.
+print/reprint that 
 """
 
 import traceback
@@ -34,9 +36,8 @@ from ._log import logger, set_verbose
 
 class GCHIResults(dict):
     """
-    dict of {metric_name: xr.Dataset} for metrics that ran successfully, plus
-    a record of what was skipped (missing inputs) or failed (error) so the
-    summary can be reprinted any time, not just right after calculate_all runs.
+    dict of {metric_name: xr ds} for metrics that ran successfully, plus
+    a record of what was skipped due to missing inputs or failed
     """
     def __init__(self, results, skipped, failed):
         super().__init__(results)
@@ -61,7 +62,7 @@ _REQUIRED_VARS = {
     "AT":          {"tasmax", "hurs"},
     "HI":          {"tasmax", "hurs"},
     "Hu":          {"tasmax", "hurs"},
-    "WBT":         {"tasmax", "ps"},        # also huss or hurs
+    "WBT":         {"tasmax", "ps"}, # also huss or hurs
     "WBGT":        {"tasmax", "tas", "ps"}, # also huss or hurs
     "UTCIhot":     {"tasmax", "tas", "hurs", "ps"},
     "UTCIcold":    {"tasmin", "tas", "hurs", "ps"},
@@ -71,7 +72,7 @@ _REQUIRED_VARS = {
     "TNXp":        {"tasmin"},
     "FI":          {"sfcWind", "tas", "hurs"},
     "HDW":         {"sfcWind", "tas", "hurs"},
-    "FWI":         {"tasmax", "pr", "sfcWind"},  # also hurs or hursmin
+    "FWI":         {"tasmax", "pr", "sfcWind"}, # also hurs or hursmin
     "O3":          {"o3", "tas", "ps"},
     "PM2pt5":      {"mmrbc", "mmrdust", "mmroa", "mmrso4", "mmrss", "tas", "ps"},
     "DSD":         {"pr"},
@@ -90,19 +91,18 @@ _REQUIRED_VARS = {
 # required base_dict keys per metric (if base_dict is provided)
 # if any key is missing, the metric is skipped
 _REQUIRED_BASE = {
-    "HWF":    {"tas"},       # also needs t{p}p_calday, checked at runtime
-    "TNXp":   set(),         # checked at runtime (needs tasmin_{p}p keys)
+    "HWF":    {"tas"}, # also needs t{p}p_calday, checked at runtime
+    "TNXp":   set(), # checked at runtime (needs tasmin_{p}p keys)
     "SPI":    {"pr"},
-    "SMSXp":   set(),       # checked at runtime (needs mrsos_{p}p keys)
-    "PR1day": set(),         # checked at runtime (needs pr_{p}p keys)
-    "PR5day": set(),         # checked at runtime (needs rx5day_{p}p keys)
+    "SMSXp":   set(), # checked at runtime (needs mrsos_{p}p keys)
+    "PR1day": set(), # checked at runtime (needs pr_{p}p keys)
+    "PR5day": set(), # checked at runtime (needs rx5day_{p}p keys)
 }
 
 
 def _check_vars(ds_dict, base_dict, metric):
     """
-    Returns (can_run, reason) — reason is a short string explaining why it can't run.
-    Checks ds_dict keys and (where relevant) base_dict keys.
+    checks inputs, returns reason why cannot runb
     """
     required = _REQUIRED_VARS.get(metric, set())
     missing_ds = required - set(ds_dict.keys())
@@ -159,38 +159,28 @@ def calculate_all(
     verbose=False,
 ):
     """
-    Run all gchi metrics on ds_dict, skipping those with missing inputs.
+    Run all gchi metrics on ds_dict, skipping those with missing inputs
 
-    Parameters
-    ----------
-    ds_dict : dict
-        dict of xr.DataArrays keyed by CMIP6 shortname
-    base_dict : dict, optional
+    ds_dict: dict of das keyed by CMIP6 shortname
+    base_dict : same as above, but for historical simulations / base period datasts for percentile calculation. more info below. 
         output from calculate_base_period_percentiles(), built from your own
         historical/base-period data. needed for HWF, TNXp, SPI, SMSXp, PR1day, PR5day.
-        NOT derived from ds_dict automatically -- if omitted, those metrics are
-        skipped rather than guessing a base period from the study period data.
-    fwi_mask_file : str, optional
-        path to infrequent burning mask file (for FWI)
-    environmental_zone_file : str, optional
-        path to environmental zone file (for FWI spatially-varying thresholds)
-    VBD_mask_file : str, optional
-        path to aridity mask file (for VSmalaria, VSzika, VSdengue*)
-    mda8_scale_file : str, optional
-        path to MDA8 scale factor file (for O3)
-    mda8_scale_varname : str
-        variable name in mda8_scale_file (default 'o3')
-    TR_thresh : float
-        tropical nights threshold (default 20°C)
-    percentile_base : int
-        percentile base for HWF (default 90)
+        if omitted, those metrics are skipped 
+    
+    Optional mask inputs, scalars, and other aux data 
+    BY DEFAULT THESE ARE PROVIDED BY GCHI, DOWNLOADED AUTOMATICALLY FROM ZENODO AND STORED LOCALLY
+    You may provide your own files with the kw args below 
+    fwi_mask_file: path to infrequent burning mask file (for FW indices)
+    environmental_zone_file: path to environmental zone file (for FWI spatially-varying thresholds)
+    VBD_mask_file: path to aridity mask file (for VSmalaria, VSzika, VSdengue*)
+    mda8_scale_file: path to MDA8 scale factor file (for O3)
+    mda8_scale_varname: variable name in mda8_scale_file (default 'o3')
 
-    Returns
-    -------
-    GCHIResults
-        dict-like {metric_name: xr.Dataset} for each metric that ran successfully.
-        skipped and failed metrics are printed to console, and are also stored on
-        the returned object as .skipped / .failed -- call .summary() to reprint.
+    TR_thresh: tropical nights threshold (default 20°C)
+    percentile_base: percentile base for HWF (default 90)
+
+    Returns GCHIResults dict-like {metric_name: xr ds} for each metric that ran successfully
+         call .summary() to reprint log
     """
 
     set_verbose(verbose)

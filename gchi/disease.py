@@ -44,8 +44,8 @@ def _vbd_suitability(ds_dict, T_range, VBD_mask_file, var_name, severity_thresho
 
 def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file="default", severity_thresholds=None):
     """
-    Malaria transmission suitability — fraction of year with suitable temperature.
-    Temperature range from literature.
+    Malaria transmission suitability — fraction of year with suitable temperature
+    Temperature range from literature (Ryan et al. 2020 https://doi.org/10.1186/s12936-020-03224-6)
     """
     logger.info("calculating malaria suitability...")
     if severity_thresholds is None:
@@ -56,7 +56,8 @@ def VSmalaria(ds_dict, T_range=[22.9, 27.8], VBD_mask_file="default", severity_t
 
 def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file="default", severity_thresholds=None):
     """
-    Zika transmission suitability — fraction of year with suitable temperature.
+    Zika transmission suitability — fraction of year with suitable temperature
+    range from Ryan et al 2021 https://doi.org/10.1111/gcb.15384
     """
     logger.info("calculating zika suitability...")
     if severity_thresholds is None:
@@ -67,7 +68,8 @@ def VSzika(ds_dict, T_range=[23.9, 34], VBD_mask_file="default", severity_thresh
 
 def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file="default", severity_thresholds=None):
     """
-    Dengue (Aedes aegypti) transmission suitability.
+    Dengue (Aedes aegypti) transmission suitability
+    Range from Ryan et al. 2019 https://doi.org/10.1371/journal.pntd.0007213
     """
     logger.info("calculating dengue aegypti suitability...")
     if severity_thresholds is None:
@@ -78,7 +80,8 @@ def VSdengueAeg(ds_dict, T_range=[21.3, 34], VBD_mask_file="default", severity_t
 
 def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file="default", severity_thresholds=None):
     """
-    Dengue (Aedes albopictus) transmission suitability.
+    Dengue (Aedes albopictus) transmission suitability
+    Range from Ryan et al. 2019 https://doi.org/10.1371/journal.pntd.0007213
     """
     logger.info("calculating dengue albopictus suitability...")
     if severity_thresholds is None:
@@ -90,20 +93,13 @@ def VSdengueAlb(ds_dict, T_range=[19.9, 29.4], VBD_mask_file="default", severity
 def VbrS(ds_dict, salinity_max=28, SST_min=18, severity_thresholds=None):
     """
     Vibrio bacteria suitability 
-    Suitability = monthly SST >= SST_min and SSS < salinity_max.
+    Suitability = monthly SST >= SST_min (18C) and SSS < salinity_max (28 psu)
 
+    Process adapted from Trinanes et al 2021 https://doi.org/10.1016/S2542-5196(21)00169-8
+    
     Salinity < 28 psu is used as a coastal proxy since model grid cells are
     too coarse for a distance-to-coast mask. A proper coastal mask can be
-    requested from the G-CHI team.
-
-    Parameters
-    ----------
-    ds_dict : dict
-        needs 'tos' and 'sos'
-    salinity_max : float
-        upper salinity threshold for vibrio suitability (default 28 psu)
-    SST_min : float
-        lower SST threshold for vibrio suitability (default 18°C)
+    requested from the G-CHI team
     """
     logger.info("calculating vibrio suitability...")
 
