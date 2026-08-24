@@ -16,7 +16,8 @@ dependencies = [
     "numba",
     "xesmf",
     "netcdf4",
-    "h5netcdf"
+    "h5netcdf",
+    "dask"
 ]
 
 [project.optional-dependencies]
