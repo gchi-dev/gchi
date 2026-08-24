@@ -14,7 +14,9 @@ dependencies = [
     "pandas",
     "scipy",
     "numba",
-    "xesmf"
+    "xesmf",
+    "netcdf4",
+    "h5netcdf"
 ]
 
 [project.optional-dependencies]
