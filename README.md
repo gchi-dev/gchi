@@ -10,6 +10,7 @@ Note. The GCHI methodology and CMIP6 analysis paper is currently under submissio
 
 ```bash
 conda create -n gchi -c conda-forge xesmf esmpy
+conda activate gchi
 pip install gchi
 ```
 
