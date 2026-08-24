@@ -4,3 +4,4 @@
 *.nc
 __pycache__
 PUBLISHING.md
+reindex_tag.sh
