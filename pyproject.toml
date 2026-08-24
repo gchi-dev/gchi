@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gchi"
-version = "0.0.0"
+version = "1.0.0b1"
 description = "Global Climate Health Index — climate-based threats to human health"
 readme = "README.md"
 requires-python = ">=3.9"
