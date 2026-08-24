@@ -9,11 +9,11 @@ Note. The GCHI methodology and CMIP6 analysis paper is currently under submissio
 ## Install
 
 ```bash
-pip install -e . 
+conda create -n gchi -c conda-forge xesmf esmpy
+pip install gchi
 ```
 
-Needs xarray, dask, xesmf, numba, scipy. xesmf in particular can be a pain to install
-outside conda. If `pip install xesmf` fails, use conda instead.
+xesmf and dependencies need to be installed with conda
 
 ## Quick start
 to see input structure run the `gchi.show_expected_ds_format()`  
