@@ -7,7 +7,7 @@ name = "gchi"
 version = "1.0.0b1"
 description = "Global Climate Health Index"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "numpy",
     "xarray",
