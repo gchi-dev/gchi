@@ -9,6 +9,7 @@ severity_thresholds = {
     "HWF": [0.052, 0.077, 0.110, 0.173],  # fraction of year
     "TR": [0.312, 0.532, 0.918, 0.997],  # fraction of year
     "TXC": [30, 35, 40, 45],  # °C
+    "TXXp": [90, 95, 98, 99.5],  # unit percentile
     "UTCIcold": [0, -13, -27, -40],  # °C
     "TNXp": [10, 5, 2, 0.5],  # unit percentile
     "FI": [0.852, 1.125, 1.579, 2.418], # FI index, unitless 
