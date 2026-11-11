@@ -134,15 +134,15 @@ def SMSXp(ds_dict, base_dict, severity_thresholds=None):
     nan_mask = _nan_mask(SM)
     steps_per_year = _get_tsteps(SM)
 
-    mrsos_base_percentile_vals = [
-        float(k.split("_")[1].replace("pt", ".").replace("p", ""))
-        for k in base_dict.keys() if k.startswith('mrsos_') and k.endswith('p')
-    ]
     mrsos_base_percentile_keys = sorted(
         [k for k in base_dict.keys() if k.startswith('mrsos_') and k.endswith('p')],
         key=lambda k: float(k.replace('mrsos_', '').replace('pt', '.').replace('p', '')),
         reverse=True,
     )
+    mrsos_base_percentile_vals = [
+        float(k.replace('mrsos_', '').replace('pt', '.').replace('p', ''))
+        for k in mrsos_base_percentile_keys
+    ]
 
     if sorted(mrsos_base_percentile_vals) != sorted(severity_thresholds):
         logger.warning(
