@@ -680,6 +680,68 @@ def TXC(ds_dict, severity_thresholds=None):
     return _add_metric_metadata(result, "TXC", ds_dict, severity_thresholds=severity_thresholds, units="fraction of year")
 
 
+def TXXp(ds_dict, base_dict, severity_thresholds=None, temp_min=None):
+    """
+    Days where daily max temperature > Xth percentile of base period tasmax (hot-side version of TNXp)
+    spatially varying thresholds from base period
+    base_dict: from calculate_base_period_percentiles(tasmax=...). needs 'tasmax_{p}p' keys
+    temp_min: optional floor (degC). only count days with tasmax >= temp_min. default None = purely relative
+    """
+    if severity_thresholds is None:
+        severity_thresholds = _default_thresholds["TXXp"]
+
+    TX = _check_and_convert_units(da=ds_dict["tasmax"], input_var="tasmax", conv_type="C")
+    nan_mask = _nan_mask(TX)
+    steps_per_year = _get_tsteps(TX)  # full-calendar denominator, before temp_min masking
+    if temp_min is not None:
+        never_hot_mask = (TX >= temp_min).resample(time="1YE").sum() == 0
+        TX = TX.where(TX >= temp_min)
+
+    def _pct(k):
+        return float(k.replace("tasmax_", "").replace("pt", ".").replace("p", ""))
+
+    # ascending: 90th -> level 1, 99.5th -> level 4
+    keys = sorted([k for k in base_dict if k.startswith("tasmax_") and k.endswith("p")], key=_pct)
+    vals = [_pct(k) for k in keys]
+
+    if sorted(vals) != sorted(float(t) for t in severity_thresholds):
+        logger.warning(
+            f"cannot calculate TXXp — base period tasmax percentiles don't match severity_thresholds.\n"
+            f"base period: {vals}. thresholds: {severity_thresholds}. skipping..."
+        )
+        return None
+
+    n = len(keys)
+    counts = []
+    for k in keys:
+        th = _check_and_convert_units(da=base_dict[k], input_var="tasmax", conv_type="C")
+        counts.append((TX > th).resample(time="1YE").sum(dim="time", skipna=True))
+    TXXp_val = xr.concat(counts, dim="level").assign_coords(level=np.arange(1, n + 1))
+    TXXp_val = _ann_frac(TXXp_val, steps_per_year).rename("TXXp")
+
+    # level N if exceedance fraction > (100 - p)/100; ascending so most extreme overwrites last
+    severity_level = xr.zeros_like(TXXp_val.isel(level=0).drop_vars("level"), dtype=int)
+    for i, p in enumerate(vals):
+        exceeds = TXXp_val.sel(level=i + 1) > (100 - p) / 100
+        severity_level = severity_level.where(~exceeds, other=i + 1)
+
+    severity_level = severity_level.where(TXXp_val.notnull().any("level"))
+    severity_level.name = "TXXp_severity_level"
+    TXXp_val = xr.merge([TXXp_val, severity_level], compat="override")
+
+    if temp_min is not None:
+        TXXp_val = TXXp_val.where(~never_hot_mask, other=0)
+    TXXp_val = TXXp_val.where(~nan_mask)
+    TXXp_val.attrs["level_thresholds"] = [
+        {"level": int(i + 1), "threshold_value": vals[i], "unit": "percentile", "source": "base period distribution"}
+        for i in range(n)
+    ]
+    floor = f" with tasmax >= {temp_min} degC" if temp_min is not None else ""
+    return _add_metric_metadata(
+        TXXp_val, "TXXp", ds_dict, units="fraction of year",
+        notes=f"days above base period tasmax percentile thresholds{floor}. spatially varying thresholds.",
+    )
+
 def tr_values(ds_dict):
     """Raw daily min temperature values for TR"""
     return _check_and_convert_units(da=ds_dict['tasmin'], input_var="tasmin", conv_type="C")

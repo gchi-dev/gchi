@@ -23,7 +23,7 @@ print/reprint that
 
 import traceback
 
-from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TR, wbt_values
+from .heat import AT, HI, Hu, WBT, WBGT, UTCIhot, HWF, TXC, TXXp, TR, wbt_values
 from .cold import UTCIcold, TNXp
 from .fire import FI, HDW, FWI
 from .aq import O3, PM2pt5
@@ -68,6 +68,7 @@ _REQUIRED_VARS = {
     "UTCIcold":    {"tasmin", "tas", "hurs", "ps"},
     "HWF":         {"tas"},
     "TXC":         {"tasmax"},
+    "TXXp":        {"tasmax"},
     "TR":          {"tasmin"},
     "TNXp":        {"tasmin"},
     "FI":          {"sfcWind", "tas", "hurs"},
@@ -78,14 +79,14 @@ _REQUIRED_VARS = {
     "DSD":         {"pr"},
     "SPI":         {"pr"},
     "SMSXp":       {"mrsos"},
-    "VSmalaria":   {"tas"},
-    "VSzika":      {"tas"},
+    "VSmalaria":  {"tas"},
+    "VSzika": {"tas"},
     "VSdengueAeg": {"tas"},
     "VSdengueAlb": {"tas"},
-    "VbrS":        {"tos", "sos"},
-    "PRXmm":       {"pr"},
-    "PR1day":      {"pr"},
-    "PR5day":      {"pr"},
+    "VbrS": {"tos", "sos"},
+    "PRXmm": {"pr"},
+    "PR1day": {"pr"},
+    "PR5day": {"pr"},
 }
 
 # required base_dict keys per metric (if base_dict is provided)
@@ -93,6 +94,7 @@ _REQUIRED_VARS = {
 _REQUIRED_BASE = {
     "HWF":    {"tas"}, # also needs t{p}p_calday, checked at runtime
     "TNXp":   set(), # checked at runtime (needs tasmin_{p}p keys)
+    "TXXp": set(),
     "SPI":    {"pr"},
     "SMSXp":   set(), # checked at runtime (needs mrsos_{p}p keys)
     "PR1day": set(), # checked at runtime (needs pr_{p}p keys)
@@ -157,6 +159,7 @@ def calculate_all(
     TR_thresh=20,
     percentile_base=90,
     verbose=False,
+    include_TXC=False,
 ):
     """
     Run all gchi metrics on ds_dict, skipping those with missing inputs
@@ -223,6 +226,7 @@ def calculate_all(
             logger.info("base_dict looks like raw data -- computing percentile thresholds automatically...")
             base_dict_pct = calculate_base_period_percentiles(
                 tas=base_dict.get("tas"),
+                tasmax=base_dict.get("tasmax"),
                 tasmin=base_dict.get("tasmin"),
                 pr=base_dict.get("pr"),
                 mrsos=base_dict.get("mrsos"),
@@ -282,7 +286,9 @@ def calculate_all(
     _run("WBGT",    lambda: WBGT(ds_dict, Twb=_get_twb()))
     _run("UTCIhot", lambda: UTCIhot(ds_dict))
     _run("HWF",     lambda: HWF(ds_dict, base_dict, percentile_base=percentile_base))
-    _run("TXC",     lambda: TXC(ds_dict))
+    if include_TXC:
+        _run("TXC", lambda: TXC(ds_dict))
+    _run("TXXp",    lambda: TXXp(ds_dict, base_dict))
     _run("TR",      lambda: TR(ds_dict, TR_thresh=TR_thresh))
 
     # --- cold ---

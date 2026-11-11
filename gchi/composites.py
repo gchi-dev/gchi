@@ -23,7 +23,7 @@ from ._log import logger
 # not present in your results are skipped automatically, no need to prune
 # this list yourself.
 DEFAULT_CATEGORIES = {
-    "heat_stress":        ["AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "TXC", "TR", "HWF"],
+    "heat_stress":        ["AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "TXXp", "TR", "HWF"],
     "cold_stress":        ["UTCIcold", "TNXp"],
     "fire_weather":       ["FI", "HDW", "FWI"],
     "air_quality":        ["O3", "PM2pt5"],

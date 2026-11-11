@@ -11,11 +11,12 @@ SOFTWARE_VERSION = "0.0.0"
 _DEFAULT_BASE_YEARS = (1980, 2014)
 
 _DEFAULT_PERCENTILES = {
-    "tas_calday":  [90],               # calendar-day percentile
-    "pr":          [90, 95, 98, 99.5], # all-year wet-day percentiles
-    "tasmin":      [10, 5, 2, 0.5],    # all-year cold-tail percentiles
-    "pr5day":      [90, 95, 98, 99.5], # all 5-day rolling sum percentiles (wet windows only)
-    "mrsos":      [10, 5, 2, 0.5],    # all-year dry-tail percentiles
+    "tas_calday":  [90], # calendar-day percentile
+    "pr": [90, 95, 98, 99.5], # all-year wet-day percentiles
+    "tasmin": [10, 5, 2, 0.5], # all-year cold-tail percentiles
+    "pr5day": [90, 95, 98, 99.5], # all 5-day rolling sum percentiles (wet windows only)
+    "mrsos": [10, 5, 2, 0.5], # all-year dry-tail percentiles
+    "tasmax": [90, 95, 98, 99.5], # all-year hot-tail percentiles (TXXp)
 }
 
 
@@ -236,6 +237,7 @@ def calculate_base_period_percentiles(
     tas_calday_percentiles=_DEFAULT_PERCENTILES["tas_calday"],
     pr_percentiles=_DEFAULT_PERCENTILES["pr"],
     tasmin_percentiles=_DEFAULT_PERCENTILES["tasmin"],
+    tasmax_percentiles=_DEFAULT_PERCENTILES["tasmax"],
     pr5day_percentiles=_DEFAULT_PERCENTILES["pr5day"],
     mrsos_percentiles=_DEFAULT_PERCENTILES["mrsos"],
     wet_day_threshold=1.0,
@@ -339,13 +341,24 @@ def calculate_base_period_percentiles(
             notes_fmt=lambda p: f"calendar-day {p}th percentile of tas (degC). one value per dayofyear per grid cell.",
         ))
 
-    # tasmax stored for HWF (no percentile calc needed, just a slice)
+    # tasmax: stored raw (degC) + all-year hot-tail percentiles for TXXp
     if tasmax is not None:
-        logger.info("converting tasmax to degC for base period storage...")
-        tasmax_base, *_ = _slice_to_base(
+        logger.info("calculating tasmax base period percentiles...")
+        tasmax_base, actual_start, actual_end = _slice_to_base(
             _check_and_convert_units(da=tasmax, input_var="tasmax", conv_type="C"), "tasmax"
         )
+        tasmax_base = tasmax_base.chunk({"time": -1})
         base_dict["tasmax"] = tasmax_base
+
+        q_vals = [p / 100.0 for p in tasmax_percentiles]
+        txp_all = tasmax_base.quantile(q_vals, dim="time", skipna=True)
+        base_dict.update(_unpack_quantiles(
+            txp_all, tasmax_percentiles,
+            key_fmt=lambda p: f"tasmax_{str(p).replace('.', 'pt')}p",
+            units="degC", var_name="tasmax",
+            actual_start=actual_start, actual_end=actual_end,
+            notes_fmt=lambda p: f"all-year {p}th percentile of tasmax (degC). one value per grid cell.",
+        ))
 
     # tasmin all-year cold-tail percentiles
     if tasmin is not None:

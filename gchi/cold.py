@@ -51,9 +51,13 @@ def TNXp(ds_dict, base_dict, severity_thresholds=None, temp_max=15):
     always_warm_mask = (TN < temp_max).resample(time="1YE").sum() == 0
     TN = TN.where(TN < temp_max)
 
+    # tasmin_base_percentile_vals = [
+    #     float(k.split("_")[1].replace("pt", ".").replace("p", ""))
+    #     for k in base_dict.keys() if k.startswith('tasmin_') and k.endswith('p')
+    # ]
     tasmin_base_percentile_vals = [
-        float(k.split("_")[1].replace("pt", ".").replace("p", ""))
-        for k in base_dict.keys() if k.startswith('tasmin_') and k.endswith('p')
+        float(k.replace('tasmin_', '').replace('pt', '.').replace('p', ''))
+        for k in tasmin_base_percentile_keys
     ]
     tasmin_base_percentile_keys = sorted(
         [k for k in base_dict.keys() if k.startswith('tasmin_') and k.endswith('p')],

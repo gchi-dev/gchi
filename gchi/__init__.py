@@ -29,6 +29,7 @@ from .heat import (
     UTCIhot, utci_hot_values,
     HWF,
     TXC, txc_values,
+    TXXp,
     TR, tr_values,
 )
 
@@ -105,7 +106,7 @@ def _auto_prep_wrapper(fn):
     return wrapped
 
 _auto_prep_metrics = [
-    "AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "HWF", "TXC", "TR",
+    "AT", "HI", "Hu", "WBT", "WBGT", "UTCIhot", "HWF", "TXC", "TR", "TXXp",
     "UTCIcold", "TNXp",
     "FI", "HDW", "FWI",
     "O3", "PM2pt5",
@@ -162,6 +163,7 @@ __all__ = [
     "WBGT", "wbgt_values",
     "UTCIhot", "utci_hot_values",
     "HWF",
+    "TXXp",
     "TXC", "txc_values",
     "TR", "tr_values",
     # cold
